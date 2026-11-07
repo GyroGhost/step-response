@@ -1,0 +1,529 @@
+<title>GyroGhost Step Response</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Sans+Arabic:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: instrument bench — log rack on the left, three axis scopes on the right, comparison tables underneath. */
+:root {
+  --bg: #0d1014; --panel: #151a20; --panel-2: #1b2129; --line: #2a323c; --grid: #222a33;
+  --fg: #e6eaef; --muted: #8b96a3; --accent: #e5383b; --accent-soft: rgba(229,56,59,.14);
+  --good: #3fb68b; --warn: #e3a33b; --bad: #e5383b;
+  --f-display: "Chakra Petch", "IBM Plex Sans Arabic", "Segoe UI", system-ui, sans-serif;
+  --f-body: "IBM Plex Sans", "IBM Plex Sans Arabic", "Segoe UI", system-ui, sans-serif;
+  --f-mono: "JetBrains Mono", ui-monospace, Consolas, monospace;
+  color-scheme: dark;
+}
+@media (prefers-color-scheme: light) { :root:not([data-theme="dark"]) {
+  --bg: #f3f5f7; --panel: #ffffff; --panel-2: #eef1f4; --line: #d6dce3; --grid: #e7ebef;
+  --fg: #141a21; --muted: #5d6874; --accent: #c8262a; --accent-soft: rgba(200,38,42,.09);
+  --good: #1f8a63; --warn: #a96d0c; --bad: #c8262a; color-scheme: light; } }
+:root[data-theme="light"] {
+  --bg: #f3f5f7; --panel: #ffffff; --panel-2: #eef1f4; --line: #d6dce3; --grid: #e7ebef;
+  --fg: #141a21; --muted: #5d6874; --accent: #c8262a; --accent-soft: rgba(200,38,42,.09);
+  --good: #1f8a63; --warn: #a96d0c; --bad: #c8262a; color-scheme: light; }
+
+* { box-sizing: border-box; }
+body { background: var(--bg); color: var(--fg); font: 14px/1.5 var(--f-body); }
+.wrap { max-width: 1320px; margin: 0 auto; padding-block: 20px 48px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+header.top { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; padding-bottom: 18px; border-bottom: 1px solid var(--line); }
+.mark { width: 38px; height: 38px; flex: none; }
+.brand h1 { font: 700 22px/1.1 var(--f-display); letter-spacing: .02em; margin: 0; text-wrap: balance; }
+.brand h1 span { color: var(--accent); }
+.brand p { margin: 2px 0 0; color: var(--muted); font-size: 13px; }
+.top .spacer { flex: 1; }
+.btn { font: 600 13px var(--f-display); letter-spacing: .05em; text-transform: uppercase; border: 1px solid var(--line);
+  background: var(--panel); color: var(--fg); padding: 9px 14px; border-radius: 6px; cursor: pointer; }
+.btn:hover { border-color: var(--muted); }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+.btn.primary:hover { filter: brightness(1.08); }
+.btn:focus-visible, .seg button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.bench { display: grid; grid-template-columns: 320px minmax(0,1fr); gap: 20px; margin-top: 20px; align-items: start; }
+@media (max-width: 900px) { .bench { grid-template-columns: minmax(0,1fr); } }
+
+.rack { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.drop { border: 1.5px dashed var(--line); border-radius: 10px; padding: 18px 16px; text-align: center; background: var(--panel);
+  transition: border-color .15s, background .15s; cursor: pointer; }
+.drop.over { border-color: var(--accent); background: var(--accent-soft); }
+.drop strong { font: 600 15px var(--f-display); letter-spacing: .03em; display: block; }
+.drop small { color: var(--muted); display: block; margin-top: 4px; }
+.status { font-size: 12.5px; color: var(--muted); min-height: 18px; }
+.status.err { color: var(--bad); }
+.label { font: 600 11px var(--f-display); text-transform: uppercase; letter-spacing: .12em; color: var(--muted); }
+
+.logs { display: flex; flex-direction: column; gap: 8px; }
+.log { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; display: grid;
+  grid-template-columns: auto minmax(0,1fr) auto; gap: 4px 10px; align-items: center; }
+.log.off { opacity: .45; }
+.log .meta, .log .name, td { unicode-bidi: plaintext; }
+[dir="rtl"] .brand h1, [dir="rtl"] .scope h2 { direction: ltr; text-align: right; }
+.swatch { width: 14px; height: 14px; border-radius: 3px; border: 0; padding: 0; cursor: pointer; }
+.log .name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.log .meta { grid-column: 2 / 4; font: 12px/1.45 var(--f-mono); color: var(--muted); font-variant-numeric: tabular-nums; }
+.log .x { background: none; border: 0; color: var(--muted); cursor: pointer; font-size: 16px; line-height: 1; padding: 2px 4px; }
+.log .x:hover { color: var(--accent); }
+.log .trim { grid-column: 2 / 4; display: flex; gap: 6px; align-items: center; font-size: 12px; color: var(--muted); flex-wrap: wrap; }
+.log .trim input { width: 62px; background: var(--panel-2); border: 1px solid var(--line); color: var(--fg); border-radius: 4px;
+  padding: 3px 5px; font: 12px var(--f-mono); }
+.tag { font: 500 10.5px var(--f-mono); padding: 1px 6px; border-radius: 99px; background: var(--panel-2); color: var(--muted); border: 1px solid var(--line); }
+
+.ctrls { display: flex; gap: 14px; flex-wrap: wrap; align-items: center; }
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; }
+.seg button { background: var(--panel); color: var(--muted); border: 0; padding: 6px 10px; font: 500 12px var(--f-mono); cursor: pointer; }
+.seg button[aria-pressed="true"] { background: var(--panel-2); color: var(--fg); box-shadow: inset 0 -2px 0 var(--accent); }
+.chk { display: inline-flex; gap: 6px; align-items: center; font-size: 13px; color: var(--muted); cursor: pointer; }
+
+.scopes { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 12px; margin-top: 12px; }
+@media (max-width: 1150px) { .scopes { grid-template-columns: minmax(0,1fr); } }
+.scope { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 12px 12px 8px; min-width: 0; }
+.scope h2 { font: 700 15px var(--f-display); letter-spacing: .08em; text-transform: uppercase; margin: 0; display: flex; align-items: baseline; gap: 8px; }
+.scope h2 small { font: 400 11px var(--f-mono); letter-spacing: 0; text-transform: none; color: var(--muted); }
+.scope canvas { direction: ltr; width: 100%; height: 250px; display: block; margin-top: 6px; touch-action: none; }
+
+section.tables { margin-top: 22px; display: grid; gap: 18px; }
+.tbl-wrap { overflow-x: auto; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; }
+table { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums; }
+th, td { padding: 8px 12px; white-space: nowrap; border-bottom: 1px solid var(--grid); font: 13px var(--f-mono); }
+th { font: 600 11px var(--f-display); letter-spacing: .1em; text-transform: uppercase; color: var(--muted); background: var(--panel-2); }
+th, td { text-align: end; }
+th:first-child, td:first-child { text-align: start; }
+tr:last-child td { border-bottom: 0; }
+td.axis { font: 700 12px var(--f-display); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+td .dot { display: inline-block; width: 9px; height: 9px; border-radius: 2px; margin-right: 7px; vertical-align: 0; }
+.chip { font: 600 11px var(--f-body); padding: 2px 8px; border-radius: 99px; border: 1px solid currentColor; }
+.chip.good { color: var(--good); } .chip.warn { color: var(--warn); } .chip.bad { color: var(--bad); }
+td.diff { color: var(--accent); font-weight: 500; }
+h3 { font: 700 14px var(--f-display); letter-spacing: .1em; text-transform: uppercase; margin: 0 0 8px; }
+.note { color: var(--muted); font-size: 13px; max-width: 72ch; margin: 6px 0 0; }
+.howto { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; }
+.howto div { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; }
+.howto b { font: 600 13px var(--f-display); letter-spacing: .04em; display: block; margin-bottom: 3px; }
+.howto p { margin: 0; color: var(--muted); font-size: 13px; }
+footer { margin-top: 26px; color: var(--muted); font-size: 12px; border-top: 1px solid var(--line); padding-top: 12px; }
+footer a { color: var(--fg); }
+.example-banner { font-size: 12.5px; color: var(--muted); background: var(--panel-2); border: 1px solid var(--line); border-radius: 8px; padding: 8px 12px; }
+.example-banner b { color: var(--fg); }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+
+<div class="wrap" id="wrap">
+  <header class="top">
+    <svg class="mark" viewBox="0 0 40 40" aria-hidden="true">
+      <circle cx="20" cy="20" r="17" fill="none" stroke="var(--accent)" stroke-width="3" stroke-dasharray="80 27" transform="rotate(-40 20 20)"/>
+      <path d="M13 29V18a7 7 0 0 1 14 0v11l-2.3-2-2.4 2-2.3-2-2.3 2-2.4-2z" fill="var(--fg)"/>
+      <circle cx="17.5" cy="18.5" r="1.4" fill="var(--bg)"/><circle cx="22.5" cy="18.5" r="1.4" fill="var(--bg)"/>
+    </svg>
+    <div class="brand">
+      <h1>GyroGhost <span>Step Response</span></h1>
+      <p data-i18n="tagline"></p>
+    </div>
+    <div class="spacer"></div>
+    <button class="btn" id="langBtn" type="button" lang="ar"></button>
+    <button class="btn primary" id="openBtn" type="button" data-i18n="open"></button>
+    <input type="file" id="file" accept=".bbl,.bfl,.txt,.BBL,.BFL" multiple hidden>
+  </header>
+
+  <div class="bench">
+    <aside class="rack">
+      <div class="drop" id="drop" role="button" tabindex="0" aria-label="Drop blackbox logs here">
+        <strong data-i18n="dropT"></strong>
+        <small data-i18n="dropS"></small>
+      </div>
+      <div class="status" id="status" aria-live="polite"></div>
+      <div class="label" data-i18n="loaded"></div>
+      <div class="example-banner" id="exampleBanner" data-i18n-html="example"></div>
+      <div class="logs" id="logs"></div>
+    </aside>
+
+    <main style="min-width:0">
+      <div class="ctrls">
+        <div class="seg" role="group" aria-label="Time window">
+          <button type="button" data-win="150" aria-pressed="false">0–150 ms</button>
+          <button type="button" data-win="300" aria-pressed="true">0–300 ms</button>
+          <button type="button" data-win="500" aria-pressed="false">0–500 ms</button>
+        </div>
+        <div class="seg" role="group" aria-label="Input range">
+          <button type="button" data-rng="low" aria-pressed="true" data-i18n="rngLow"></button>
+          <button type="button" data-rng="high" aria-pressed="false" data-i18n="rngHigh"></button>
+        </div>
+      </div>
+      <div class="scopes">
+        <div class="scope"><h2>Roll <small id="sub0"></small></h2><canvas id="c0"></canvas></div>
+        <div class="scope"><h2>Pitch <small id="sub1"></small></h2><canvas id="c1"></canvas></div>
+        <div class="scope"><h2>Yaw <small id="sub2"></small></h2><canvas id="c2"></canvas></div>
+      </div>
+
+      <section class="tables">
+        <div>
+          <h3 data-i18n="metricsH"></h3>
+          <div class="tbl-wrap"><table id="mt"></table></div>
+          <p class="note" data-i18n="metricsN"></p>
+        </div>
+        <div>
+          <h3 data-i18n="tuneH"></h3>
+          <div class="tbl-wrap"><table id="pt"></table></div>
+          <p class="note" data-i18n="tuneN"></p>
+        </div>
+        <div class="howto">
+          <div><b>Peak 1.00–1.10</b><p data-i18n="h1"></p></div>
+          <div><b>Peak &gt; 1.15</b><p data-i18n="h2"></p></div>
+          <div><b>Peak &lt; 1.0</b><p data-i18n="h3"></p></div>
+          <div><b>Delay</b><p data-i18n="h4"></p></div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <footer><span data-i18n="footer"></span> · <a href="https://github.com/GyroGhost/step-response" target="_blank" rel="noopener">GitHub</a></footer>
+</div>
+
+<script type="text/plain" id="worker-src">
+self.window = self;
+/*PARSER*/
+/*CORE*/
+const store = new Map();
+function pack(r) {
+  return r.axes.map((a) => {
+    const ds = (arr) => { if (!arr) return null; const o = []; for (let ms = 0; ms <= 500; ms++) { const i = Math.min(arr.length - 1, Math.round(ms / 1000 / a.dt)); o.push(arr[i]); } return o; };
+    return { resp: ds(a.resp), respHigh: ds(a.respHigh), windows: a.windows, total: a.total, m: a.m };
+  });
+}
+self.onmessage = (e) => {
+  const msg = e.data;
+  try {
+    if (msg.type === "load") {
+      const logs = GGStep.loadLogs(new Uint8Array(msg.buf));
+      const out = [];
+      for (const l of logs) {
+        if (l.error) { out.push({ logIndex: l.index, error: l.error }); continue; }
+        const id = msg.id + ":" + l.index;
+        store.set(id, l);
+        const r = GGStep.analyze(l);
+        out.push({ id, logIndex: l.index, header: l.header, duration: l.duration, rate: r.rate, axes: pack(r) });
+      }
+      self.postMessage({ type: "loaded", reqId: msg.reqId, name: msg.name, logs: out });
+    } else if (msg.type === "trim") {
+      const l = store.get(msg.id);
+      const r = GGStep.analyze(l, { start: msg.start, end: msg.end });
+      self.postMessage({ type: "trimmed", id: msg.id, axes: pack(r) });
+    } else if (msg.type === "drop") { store.delete(msg.id); }
+  } catch (err) {
+    self.postMessage({ type: "error", reqId: msg.reqId, name: msg.name, error: String(err && err.message || err) });
+  }
+};
+</script>
+<script type="application/json" id="example">/*EXAMPLE*/</script>
+<script>
+(function () {
+  "use strict";
+  const PALETTE = ["#e5383b", "#4ea8de", "#f2c14e", "#5fd39a", "#c77dff", "#ff8c42", "#9aa5b1", "#ff5d8f"];
+  const AX = ["Roll", "Pitch", "Yaw"];
+  const state = { logs: [], win: 300, rng: "low", example: true, hover: null };
+  let colorIdx = 0, reqSeq = 0;
+
+  const I18N = {
+    en: {
+      tagline: "Free PID step response & log comparison for Betaflight blackbox logs. Runs in your browser — logs never leave your device.",
+      open: "Open BBL logs", lang: "عربي",
+      dropT: "Drop .BBL / .BFL files here", dropS: "Add several logs to overlay them — e.g. before and after a tune change.",
+      loaded: "Loaded logs",
+      example: "<b>Example loaded:</b> PID-Analyzer's public sample logs (stock tune vs good tune, Betaflight 3.1). Open your own logs to replace them.",
+      rngLow: "Input < 500°/s", rngHigh: "Input > 500°/s",
+      metricsH: "Response metrics",
+      metricsN: "Peak is the highest point in the first 150 ms. Delay is time to 50% of steady state, Rise is 10→90%, Settling is when the curve stays within ±5%.",
+      tuneH: "Tune from log header", tuneN: "Values that differ between loaded logs are highlighted.",
+      h1: "Tight and well damped. A small overshoot is normal for a crisp tune.",
+      h2: "Overshoot. Usually too much P for the D you have — lower P or raise D.",
+      h3: "Soft response. Add P, or check that D isn't too high and filters aren't too heavy.",
+      h4: "A long delay is often filter latency. Compare it between logs after changing gyro or D-term filters.",
+      footer: "Step response uses Wiener deconvolution over 1 s windows (same method as Plasmatree's PID-Analyzer). Log decoding uses the Betaflight Blackbox Explorer parser (GPL-3.0). Fly with stick inputs on every axis — hover-only logs give flat, noisy curves.",
+      noWorker: "Your browser blocked the background worker, so logs can't be analysed here.",
+      decoding: (f) => "Decoding " + f + "…", cantRead: (f) => "Couldn't read " + f + ".",
+      notLog: (f) => f + " doesn't look like a Betaflight blackbox log.",
+      noFlight: (f, e) => f + ": no usable flight found (" + e + ").",
+      added: (f, n, k) => f + ": " + n + " flight" + (n > 1 ? "s" : "") + " added" + (k ? ", " + k + " empty or short log" + (k > 1 ? "s" : "") + " skipped" : "") + ".",
+      reanalysing: (f) => "Re-analysing " + f + "…", reanalysed: (f) => "Re-analysed " + f + ".",
+      noLogs: "No logs yet. Open one or more .BBL files.",
+      useFrom: "Use from", to: "to", sec: "s", analysed: "Hz analysed", toggle: "Show or hide this log", remove: "Remove log",
+      windows: "windows", noCurve: "No curve to show", noHigh: "Not enough fast stick moves (>500°/s) in these logs",
+      noInput: "not enough stick input", noVisible: "No visible logs.",
+      axisLog: "Axis / log", setting: "Setting", read: "Read",
+      good: "Good", over: "Overshoot", highOver: "High overshoot", soft: "Soft",
+      srcSet: "setpoint", srcRec: "rebuilt from gyro + P-term",
+    },
+    ar: {
+      tagline: "أداة مجانية تطلع لك الـ Step Response وتقارن بين لوقات البلاك بوكس حق Betaflight. تشتغل بالمتصفح، واللوق ما يطلع من جهازك.",
+      open: "افتح ملفات BBL", lang: "English",
+      dropT: "اسحب ملفات BBL أو BFL هني", dropS: "حط أكثر من لوق عشان تقارن بينهم، مثلاً قبل وبعد ما تعدل التيون.",
+      loaded: "اللوقات",
+      example: "<b>هذا مثال:</b> لوقات PID-Analyzer العامة، تيون أصلي مقابل تيون زين على Betaflight 3.1. افتح لوقاتك وبتنمسح.",
+      rngLow: "حركات عادية  ‎< 500°/s", rngHigh: "حركات قوية  ‎> 500°/s",
+      metricsH: "أرقام الاستجابة",
+      metricsN: "Peak أعلى نقطة بأول 150ms. Delay الوقت لين يوصل 50%. Rise من 10% لين 90%. Settling متى يثبت المنحنى ضمن ±5%.",
+      tuneH: "التيون من هيدر اللوق", tuneN: "القيم اللي تختلف بين اللوقات تطلع بالأحمر.",
+      h1: "استجابة حادة ومتزنة. شوية Overshoot عادي بالتيون الحاد.",
+      h2: "فيه Overshoot. غالباً الـ P عالي على الـ D اللي عندك، نزّل P أو زيد D.",
+      h3: "الاستجابة ناعمة وبطيئة. زيد P، أو تأكد إن D مو عالي والفلاتر مو ثقيلة.",
+      h4: "الـ Delay الطويل غالباً من الفلاتر. قارنه بين اللوقات بعد ما تغير فلاتر الـ gyro أو الـ D-term.",
+      footer: "الـ Step Response محسوب بطريقة Wiener deconvolution على نوافذ ثانية وحدة، نفس طريقة PID-Analyzer. قراءة اللوق من Parser حق Blackbox Explorer برخصة GPL-3.0. طير وحرك الستكات على كل المحاور، لأن لوق الهوفر بس يطلع منحنى مسطح ومشوش.",
+      noWorker: "المتصفح منع التحليل بالخلفية، فما نقدر نحلل اللوقات هني.",
+      decoding: (f) => "قاعد أقرا " + f + "…", cantRead: (f) => "ما قدرت أقرا الملف " + f,
+      notLog: (f) => "الملف " + f + " مو لوق بلاك بوكس حق Betaflight",
+      noFlight: (f, e) => "الملف " + f + " ما فيه طيران ينفع للتحليل (" + e + ")",
+      added: (f, n, k) => "انضاف " + n + " طيران من " + f + (k ? "، وتخطيت " + k + " لوق فاضي أو قصير" : ""),
+      reanalysing: (f) => "قاعد أعيد تحليل " + f + "…", reanalysed: (f) => "خلصت إعادة تحليل " + f,
+      noLogs: "ما في لوقات. افتح ملف BBL أو أكثر.",
+      useFrom: "من ثانية", to: "لين", sec: "", analysed: "Hz", toggle: "إظهار أو إخفاء اللوق", remove: "حذف اللوق",
+      windows: "نافذة", noCurve: "ما في منحنى", noHigh: "ما في حركات قوية كفاية (فوق 500°/s)",
+      noInput: "حركة الستك ما تكفي", noVisible: "كل اللوقات مخفية.",
+      axisLog: "المحور / اللوق", setting: "الإعداد", read: "التقييم",
+      good: "زين", over: "Overshoot", highOver: "Overshoot عالي", soft: "ناعم",
+      srcSet: "setpoint", srcRec: "محسوب من gyro و P-term",
+    },
+  };
+  let lang = "en";
+  try { lang = localStorage.getItem("gg-lang") || ((navigator.language || "").startsWith("ar") ? "ar" : "en"); } catch (e) { lang = (navigator.language || "").startsWith("ar") ? "ar" : "en"; }
+  const t = (k, ...a) => { const v = (I18N[lang] || I18N.en)[k]; return typeof v === "function" ? v(...a) : v; };
+  function applyLang() {
+    const w = document.getElementById("wrap");
+    w.dir = lang === "ar" ? "rtl" : "ltr"; w.lang = lang;
+    document.querySelectorAll("[data-i18n]").forEach((el) => { el.textContent = t(el.dataset.i18n); });
+    document.querySelectorAll("[data-i18n-html]").forEach((el) => { el.innerHTML = t(el.dataset.i18nHtml); });
+    const b = document.getElementById("langBtn"); b.textContent = t("lang"); b.lang = lang === "ar" ? "en" : "ar";
+  }
+  const $ = (id) => document.getElementById(id);
+  const css = (v) => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+
+  // worker
+  let worker = null;
+  try {
+    const src = $("worker-src").textContent;
+    worker = new Worker(URL.createObjectURL(new Blob([src], { type: "text/javascript" })));
+    worker.onmessage = onWorker;
+  } catch (e) { setStatus(t("noWorker"), true); }
+
+  function setStatus(t, err) { const s = $("status"); s.textContent = t || ""; s.classList.toggle("err", !!err); }
+
+  // example data
+  try {
+    const ex = JSON.parse($("example").textContent);
+    ex.forEach((l, i) => state.logs.push(Object.assign({ id: "ex" + i, file: l.name, color: PALETTE[colorIdx++ % PALETTE.length], visible: true, example: true }, l)));
+  } catch (e) {}
+
+  function addFiles(files) {
+    files = Array.from(files || []);
+    if (!files.length || !worker) return;
+    if (state.example) { state.logs = []; state.example = false; colorIdx = 0; $("exampleBanner").hidden = true; }
+    files.forEach((f) => {
+      const reqId = ++reqSeq;
+      setStatus(t("decoding", f.name));
+      f.arrayBuffer().then((buf) => worker.postMessage({ type: "load", buf, id: "f" + reqId, reqId, name: f.name }, [buf]))
+        .catch(() => setStatus(t("cantRead", f.name), true));
+    });
+  }
+
+  function onWorker(e) {
+    const m = e.data;
+    if (m.type === "loaded") {
+      const good = m.logs.filter((l) => !l.error);
+      const skipped = m.logs.length - good.length;
+      if (!m.logs.length) { setStatus(t("notLog", m.name), true); return; }
+      good.forEach((l) => state.logs.push(Object.assign({ file: m.name, color: PALETTE[colorIdx++ % PALETTE.length], visible: true }, l)));
+      if (!good.length) setStatus(t("noFlight", m.name, m.logs[0].error || "empty"), true);
+      else setStatus(t("added", m.name, good.length, skipped));
+      render();
+    } else if (m.type === "trimmed") {
+      const l = state.logs.find((x) => x.id === m.id);
+      if (l) { l.axes = m.axes; setStatus(t("reanalysed", short(l))); render(); }
+    } else if (m.type === "error") {
+      setStatus((m.name || "Log") + ": " + m.error, true);
+    }
+  }
+
+  // ---------- UI: log rack ----------
+  const fmt = (v, d) => (v == null || !isFinite(v) ? "–" : v.toFixed(d));
+  const pidStr = (p) => (p ? p.slice(0, 3).join("/") : "–");
+  function renderRack() {
+    const box = $("logs");
+    box.innerHTML = "";
+    if (!state.logs.length) { box.innerHTML = '<div class="status">' + t("noLogs") + "</div>"; return; }
+    state.logs.forEach((l) => {
+      const el = document.createElement("div");
+      el.className = "log" + (l.visible ? "" : " off");
+      const h = l.header;
+      el.innerHTML =
+        '<button class="swatch" type="button" title="' + t("toggle") + '" aria-label="' + t("toggle") + '" style="background:' + l.color + '"></button>' +
+        '<div class="name" title="' + esc(l.file) + '">' + esc(l.file) + ' <span class="tag">#' + (l.logIndex + 1) + "</span></div>" +
+        (l.example ? "<span></span>" : '<button class="x" type="button" aria-label="' + t("remove") + '">×</button>') +
+        '<div class="meta">' + esc((h.craft ? h.craft + " · " : "") + (h.firmware || "")) + "<br>R " + pidStr(h.roll) + " · P " + pidStr(h.pitch) + " · Y " + pidStr(h.yaw) +
+        "<br>" + fmt(l.duration, 0) + " s · " + l.rate + " " + t("analysed") + "</div>" +
+        (l.example ? "" : '<div class="trim">' + t("useFrom") + ' <input type="number" min="0" step="1" value="' + (l.tStart ?? "") + '" placeholder="0" aria-label="Start second" data-k="tStart"> ' + t("to") + ' <input type="number" min="0" step="1" value="' + (l.tEnd ?? "") + '" placeholder="' + Math.floor(l.duration) + '" aria-label="End second" data-k="tEnd"> ' + t("sec") + '</div>');
+      el.querySelector(".swatch").onclick = () => { l.visible = !l.visible; render(); };
+      const x = el.querySelector(".x");
+      if (x) x.onclick = () => { state.logs = state.logs.filter((y) => y !== l); worker && worker.postMessage({ type: "drop", id: l.id }); render(); };
+      el.querySelectorAll(".trim input").forEach((inp) => inp.onchange = () => {
+        const v = inp.value === "" ? null : Math.max(0, +inp.value);
+        l[inp.dataset.k] = v;
+        setStatus(t("reanalysing", short(l)));
+        worker.postMessage({ type: "trim", id: l.id, start: l.tStart, end: l.tEnd });
+      });
+      box.appendChild(el);
+    });
+  }
+  const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+
+  // ---------- charts ----------
+  const curveOf = (l, a) => (state.rng === "high" ? l.axes[a].respHigh : l.axes[a].resp);
+  function drawAxis(a) {
+    const cv = $("c" + a), dpr = window.devicePixelRatio || 1;
+    const W = cv.clientWidth, H = cv.clientHeight;
+    if (cv.width !== Math.round(W * dpr)) { cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr); }
+    const ctx = cv.getContext("2d");
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, W, H);
+    const vis = state.logs.filter((l) => l.visible && curveOf(l, a));
+    let ymax = 1.4;
+    vis.forEach((l) => { const c = curveOf(l, a); for (let i = 0; i <= state.win; i++) if (c[i] > ymax - 0.1) ymax = Math.min(2.6, c[i] + 0.1); });
+    ymax = Math.ceil(ymax * 5) / 5;
+    const L = 34, R = 8, T = 8, B = 22, pw = W - L - R, ph = H - T - B;
+    const X = (ms) => L + (ms / state.win) * pw, Y = (v) => T + ph - (v / ymax) * ph;
+    ctx.font = "11px " + css("--f-mono"); ctx.lineWidth = 1;
+    // grid
+    ctx.strokeStyle = css("--grid"); ctx.fillStyle = css("--muted");
+    ctx.textAlign = "right"; ctx.textBaseline = "middle";
+    for (let v = 0; v <= ymax + 1e-9; v += 0.2) {
+      const y = Math.round(Y(v)) + 0.5;
+      ctx.beginPath(); ctx.moveTo(L, y); ctx.lineTo(W - R, y); ctx.stroke();
+      if (Math.round(v * 10) % 4 === 0 || ymax <= 1.6) ctx.fillText(v.toFixed(1), L - 6, y);
+    }
+    const step = state.win <= 150 ? 25 : state.win <= 300 ? 50 : 100;
+    ctx.textAlign = "center"; ctx.textBaseline = "top";
+    for (let ms = 0; ms <= state.win; ms += step) {
+      const x = Math.round(X(ms)) + 0.5;
+      ctx.beginPath(); ctx.moveTo(x, T); ctx.lineTo(x, T + ph); ctx.stroke();
+      ctx.fillText(ms + (ms === state.win ? " ms" : ""), Math.min(x, W - R - 14), T + ph + 5);
+    }
+    // target line
+    ctx.strokeStyle = css("--muted"); ctx.setLineDash([4, 4]);
+    ctx.beginPath(); ctx.moveTo(L, Y(1)); ctx.lineTo(W - R, Y(1)); ctx.stroke(); ctx.setLineDash([]);
+    // curves
+    vis.forEach((l) => {
+      const c = curveOf(l, a);
+      ctx.strokeStyle = l.color; ctx.lineWidth = 2; ctx.lineJoin = "round";
+      ctx.beginPath();
+      for (let i = 0; i <= state.win; i++) { const x = X(i), y = Y(Math.max(0, Math.min(ymax, c[i]))); i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); }
+      ctx.stroke();
+    });
+    // hover readout
+    if (state.hover != null && vis.length) {
+      const ms = Math.round(state.hover * state.win), x = X(ms);
+      ctx.strokeStyle = css("--fg"); ctx.globalAlpha = 0.35; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(x, T); ctx.lineTo(x, T + ph); ctx.stroke(); ctx.globalAlpha = 1;
+      const rows = vis.map((l) => [l.color, curveOf(l, a)[ms]]);
+      const bw = 92, bh = 18 + rows.length * 15, bx = x + 10 + bw > W - R ? x - 10 - bw : x + 10, by = T + 4;
+      ctx.fillStyle = css("--panel-2"); ctx.strokeStyle = css("--line");
+      ctx.beginPath(); ctx.rect(bx, by, bw, bh); ctx.fill(); ctx.stroke();
+      ctx.textAlign = "left"; ctx.textBaseline = "top"; ctx.fillStyle = css("--muted");
+      ctx.fillText(ms + " ms", bx + 8, by + 4);
+      rows.forEach(([col, v], i) => {
+        ctx.fillStyle = col; ctx.fillRect(bx + 8, by + 21 + i * 15, 8, 8);
+        ctx.fillStyle = css("--fg"); ctx.fillText(v.toFixed(3), bx + 22, by + 18 + i * 15);
+      });
+      vis.forEach((l) => { const v = curveOf(l, a)[ms]; ctx.fillStyle = l.color; ctx.beginPath(); ctx.arc(x, Y(Math.max(0, Math.min(ymax, v))), 3, 0, 7); ctx.fill(); });
+    }
+    if (!vis.length) {
+      ctx.fillStyle = css("--muted"); ctx.textAlign = "center"; ctx.textBaseline = "middle"; ctx.font = "13px " + css("--f-body");
+      ctx.fillText(state.rng === "high" ? t("noHigh") : t("noCurve"), L + pw / 2, T + ph / 2);
+    }
+    const sub = $("sub" + a);
+    sub.textContent = vis.length ? vis.map((l) => l.axes[a].windows).reduce((x, y) => x + y, 0) + " " + t("windows") : "";
+  }
+  function drawAll() { for (let a = 0; a < 3; a++) drawAxis(a); }
+  for (let a = 0; a < 3; a++) {
+    const cv = $("c" + a);
+    const move = (ev) => {
+      const r = cv.getBoundingClientRect(), L = 34, R = 8;
+      state.hover = Math.max(0, Math.min(1, (ev.clientX - r.left - L) / (r.width - L - R)));
+      drawAll();
+    };
+    cv.addEventListener("pointermove", move);
+    cv.addEventListener("pointerdown", move);
+    cv.addEventListener("pointerleave", () => { state.hover = null; drawAll(); });
+  }
+
+  // ---------- tables ----------
+  function verdict(peak) {
+    if (peak == null) return "";
+    if (peak > 1.25) return '<span class="chip bad">' + t("highOver") + "</span>";
+    if (peak > 1.15) return '<span class="chip warn">' + t("over") + "</span>";
+    if (peak >= 0.98) return '<span class="chip good">' + t("good") + "</span>";
+    return '<span class="chip warn">' + t("soft") + "</span>";
+  }
+  function renderTables() {
+    const vis = state.logs.filter((l) => l.visible);
+    const mt = $("mt");
+    if (!vis.length) { mt.innerHTML = "<tr><td>" + t("noVisible") + "</td></tr>"; $("pt").innerHTML = mt.innerHTML; return; }
+    let h = "<tr><th>" + t("axisLog") + "</th><th>Peak</th><th>Overshoot</th><th>Delay</th><th>Rise</th><th>Settling</th><th>Windows</th><th>" + t("read") + "</th></tr>";
+    for (let a = 0; a < 3; a++) {
+      vis.forEach((l, i) => {
+        const ax = l.axes[a], m = ax.m;
+        h += "<tr>" + (i === 0 ? "" : "") + '<td>' + (i === 0 ? '<span class="axis-l" style="font:700 12px var(--f-display);letter-spacing:.08em;text-transform:uppercase;color:var(--muted);display:inline-block;width:52px">' + AX[a] + "</span>" : '<span style="display:inline-block;width:52px"></span>') +
+          '<span class="dot" style="background:' + l.color + '"></span>' + esc(short(l)) + "</td>" +
+          (m ? "<td>" + fmt(m.peak, 2) + "</td><td>" + fmt(m.overshoot, 0) + " %</td><td>" + fmt(m.delay, 1) + " ms</td><td>" + fmt(m.rise, 1) + " ms</td><td>" + fmt(m.settling, 0) + " ms</td>"
+             : '<td colspan="5">' + t("noInput") + "</td>") +
+          "<td>" + ax.windows + "</td><td>" + (m ? verdict(m.peak) : "") + "</td></tr>";
+      });
+    }
+    mt.innerHTML = h;
+
+    const rows = [
+      ["Firmware", (x) => x.firmware],
+      ["Craft", (x) => x.craft || "–"],
+      ["Roll P / I / D", (x) => pidStr(x.roll)],
+      ["Pitch P / I / D", (x) => pidStr(x.pitch)],
+      ["Yaw P / I / D", (x) => pidStr(x.yaw)],
+      ["D min (R / P / Y)", (x) => (x.dMin && x.dMin.length ? x.dMin.slice(0, 3).join("/") : "–")],
+      ["Feedforward (R / P / Y)", (x) => (x.ff && x.ff.length ? x.ff.slice(0, 3).join("/") : "–")],
+      ["TPA rate / breakpoint", (x) => (x.tpaRate != null ? x.tpaRate + " / " + (x.tpaBreakpoint ?? "–") : "–")],
+      ["Setpoint source", (x) => (x.setpointSource === "setpoint" ? t("srcSet") : t("srcRec"))],
+    ];
+    let p = "<tr><th>" + t("setting") + "</th>" + vis.map((l) => '<th><span class="dot" style="display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:6px;background:' + l.color + '"></span>' + esc(short(l)) + "</th>").join("") + "</tr>";
+    rows.forEach(([label, f]) => {
+      const vals = vis.map((l) => String(f(l.header) ?? "–"));
+      const differs = new Set(vals).size > 1;
+      p += "<tr><td>" + label + "</td>" + vals.map((v) => '<td class="' + (differs ? "diff" : "") + '">' + esc(v) + "</td>").join("") + "</tr>";
+    });
+    $("pt").innerHTML = p;
+  }
+  const short = (l) => l.file.replace(/\.(bbl|bfl|txt)$/i, "") + " #" + (l.logIndex + 1);
+
+  function render() { applyLang(); renderRack(); renderTables(); drawAll(); }
+  $("langBtn").onclick = () => { lang = lang === "ar" ? "en" : "ar"; try { localStorage.setItem("gg-lang", lang); } catch (e) {} render(); };
+
+  // ---------- controls ----------
+  document.querySelectorAll("[data-win]").forEach((b) => b.onclick = () => {
+    state.win = +b.dataset.win;
+    document.querySelectorAll("[data-win]").forEach((x) => x.setAttribute("aria-pressed", x === b));
+    drawAll();
+  });
+  document.querySelectorAll("[data-rng]").forEach((b) => b.onclick = () => {
+    state.rng = b.dataset.rng;
+    document.querySelectorAll("[data-rng]").forEach((x) => x.setAttribute("aria-pressed", x === b));
+    drawAll();
+  });
+  $("openBtn").onclick = () => $("file").click();
+  $("file").onchange = (e) => { addFiles(e.target.files); e.target.value = ""; };
+  const drop = $("drop");
+  drop.onclick = () => $("file").click();
+  drop.onkeydown = (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); $("file").click(); } };
+  ["dragenter", "dragover"].forEach((t) => document.addEventListener(t, (e) => { e.preventDefault(); drop.classList.add("over"); }));
+  ["dragleave", "drop"].forEach((t) => document.addEventListener(t, (e) => { e.preventDefault(); if (t === "drop" || e.target === document.documentElement) drop.classList.remove("over"); }));
+  document.addEventListener("drop", (e) => addFiles(e.dataTransfer && e.dataTransfer.files));
+  window.addEventListener("resize", drawAll);
+  try { matchMedia("(prefers-color-scheme: dark)").addEventListener("change", drawAll); } catch (e) {}
+  new MutationObserver(drawAll).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(drawAll);
+  render();
+})();
+</script>

@@ -1,0 +1,16 @@
+{
+  "name": "gyroghost-step-response",
+  "version": "0.1.0",
+  "description": "Free in-browser PID step response and log comparison for Betaflight blackbox logs",
+  "license": "GPL-3.0-only",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "fetch-parser": "sh scripts/fetch-parser.sh",
+    "build": "node scripts/build.mjs"
+  },
+  "devDependencies": {
+    "esbuild": "^0.24.0",
+    "semver": "^7.7.4"
+  }
+}
