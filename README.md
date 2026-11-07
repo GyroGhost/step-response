@@ -7,7 +7,7 @@ Free PID step response and log comparison for Betaflight blackbox logs. It runs 
 ## What it does
 
 - Reads `.BBL` / `.BFL` blackbox logs directly (every flight inside a file shows up as its own log)
-- Plots the step response for Roll, Pitch and Yaw
+- Plots the step response for Roll, Pitch and Yaw, one big chart per axis, with a ±sd band
 - Overlays as many logs as you want, each in its own color, so you can compare before and after a tune change
 - Shows Peak, Overshoot, Delay, Rise and Settling for every axis, with a quick read (Good / Overshoot / Soft)
 - Pulls the PID, D min, Feedforward and TPA values from the log header and highlights what changed between logs
@@ -17,9 +17,9 @@ Free PID step response and log comparison for Betaflight blackbox logs. It runs 
 
 ## How it works
 
-The step response is estimated with Wiener deconvolution over 1 s windows of setpoint and gyro, the same method as [Plasmatree's PID-Analyzer](https://github.com/Plasmatree/PID-Analyzer). Windows with almost no stick input (< 20°/s) are ignored, and the result is a weighted average of all the remaining windows.
+The step response is estimated with Wiener deconvolution over 1 s windows of setpoint and gyro, the same method as [Plasmatree's PID-Analyzer](https://github.com/Plasmatree/PID-Analyzer). Windows with almost no stick input (< 20°/s) or a response that never settles near 1 are dropped. The curve is the mean of the windows that are left, and the shaded band is ±1 standard deviation, like PIDtoolbox. N is the number of windows used.
 
-On PID-Analyzer's own sample log (`good_tune.BBL`) the roll curve matches the PID-Analyzer reference within 0.003.
+A dashed curve means N < 15, so there wasn't much stick input on that axis. Flights with too little input on every axis are hidden when you load them.
 
 Logs from Betaflight 4.x use the logged `setpoint`. Older logs without it get the setpoint rebuilt from gyro + P-term, like PID-Analyzer does.
 
@@ -46,6 +46,3 @@ npm run build          # writes index.html
 - Example logs are PID-Analyzer's public sample logs
 
 Licensed under GPL-3.0. See [LICENSE](LICENSE).
-
----
-

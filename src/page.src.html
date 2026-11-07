@@ -74,12 +74,11 @@ header.top { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; pad
 .seg button[aria-pressed="true"] { background: var(--panel-2); color: var(--fg); box-shadow: inset 0 -2px 0 var(--accent); }
 .chk { display: inline-flex; gap: 6px; align-items: center; font-size: 13px; color: var(--muted); cursor: pointer; }
 
-.scopes { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 12px; margin-top: 12px; }
-@media (max-width: 1150px) { .scopes { grid-template-columns: minmax(0,1fr); } }
+.scopes { display: grid; grid-template-columns: minmax(0,1fr); gap: 14px; margin-top: 12px; }
 .scope { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 12px 12px 8px; min-width: 0; }
 .scope h2 { font: 700 15px var(--f-display); letter-spacing: .08em; text-transform: uppercase; margin: 0; display: flex; align-items: baseline; gap: 8px; }
 .scope h2 small { font: 400 11px var(--f-mono); letter-spacing: 0; text-transform: none; color: var(--muted); }
-.scope canvas { direction: ltr; width: 100%; height: 250px; display: block; margin-top: 6px; touch-action: none; }
+.scope canvas { direction: ltr; width: 100%; height: 340px; display: block; margin-top: 6px; touch-action: none; }
 
 section.tables { margin-top: 22px; display: grid; gap: 18px; }
 .tbl-wrap { overflow-x: auto; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; }
@@ -104,6 +103,7 @@ footer { margin-top: 26px; color: var(--muted); font-size: 12px; border-top: 1px
 footer a { color: var(--fg); }
 .example-banner { font-size: 12.5px; color: var(--muted); background: var(--panel-2); border: 1px solid var(--line); border-radius: 8px; padding: 8px 12px; }
 .example-banner b { color: var(--fg); }
+@media (max-width: 600px) { .scope canvas { height: 260px; } }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
 </style>
 
@@ -143,6 +143,7 @@ footer a { color: var(--fg); }
           <button type="button" data-win="300" aria-pressed="true">0–300 ms</button>
           <button type="button" data-win="500" aria-pressed="false">0–500 ms</button>
         </div>
+        <label class="chk"><input type="checkbox" id="bandChk" checked> <span data-i18n="band"></span></label>
         <div class="seg" role="group" aria-label="Input range">
           <button type="button" data-rng="low" aria-pressed="true" data-i18n="rngLow"></button>
           <button type="button" data-rng="high" aria-pressed="false" data-i18n="rngHigh"></button>
@@ -153,6 +154,7 @@ footer a { color: var(--fg); }
         <div class="scope"><h2>Pitch <small id="sub1"></small></h2><canvas id="c1"></canvas></div>
         <div class="scope"><h2>Yaw <small id="sub2"></small></h2><canvas id="c2"></canvas></div>
       </div>
+      <p class="note" data-i18n="lowData"></p>
 
       <section class="tables">
         <div>
@@ -186,7 +188,7 @@ const store = new Map();
 function pack(r) {
   return r.axes.map((a) => {
     const ds = (arr) => { if (!arr) return null; const o = []; for (let ms = 0; ms <= 500; ms++) { const i = Math.min(arr.length - 1, Math.round(ms / 1000 / a.dt)); o.push(arr[i]); } return o; };
-    return { resp: ds(a.resp), respHigh: ds(a.respHigh), windows: a.windows, total: a.total, m: a.m };
+    return { resp: ds(a.resp), sd: ds(a.sd), respHigh: ds(a.respHigh), sdHigh: ds(a.sdHigh), n: a.n, nHigh: a.nHigh, windows: a.windows, total: a.total, m: a.m, mHigh: a.mHigh };
   });
 }
 self.onmessage = (e) => {
@@ -219,7 +221,7 @@ self.onmessage = (e) => {
   "use strict";
   const PALETTE = ["#e5383b", "#4ea8de", "#f2c14e", "#5fd39a", "#c77dff", "#ff8c42", "#9aa5b1", "#ff5d8f"];
   const AX = ["Roll", "Pitch", "Yaw"];
-  const state = { logs: [], win: 300, rng: "low", example: true, hover: null };
+  const state = { logs: [], win: 300, rng: "low", example: true, hover: null, band: true };
   let colorIdx = 0, reqSeq = 0;
 
   const I18N = {
@@ -246,7 +248,7 @@ self.onmessage = (e) => {
       reanalysing: (f) => "Re-analysing " + f + "…", reanalysed: (f) => "Re-analysed " + f + ".",
       noLogs: "No logs yet. Open one or more .BBL files.",
       useFrom: "Use from", to: "to", sec: "s", analysed: "Hz analysed", toggle: "Show or hide this log", remove: "Remove log",
-      windows: "windows", noCurve: "No curve to show", noHigh: "Not enough fast stick moves (>500°/s) in these logs",
+      band: "Show spread (±sd)", lowData: "Dashed line = little stick input (N < 15), treat with care.", hidden: "Hidden: not enough stick input", windows: "windows", noCurve: "No curve to show", noHigh: "Not enough fast stick moves (>500°/s) in these logs",
       noInput: "not enough stick input", noVisible: "No visible logs.",
       axisLog: "Axis / log", setting: "Setting", read: "Read",
       good: "Good", over: "Overshoot", highOver: "High overshoot", soft: "Soft",
@@ -275,7 +277,7 @@ self.onmessage = (e) => {
       reanalysing: (f) => "قاعد أعيد تحليل " + f + "…", reanalysed: (f) => "خلصت إعادة تحليل " + f,
       noLogs: "ما في لوقات. افتح ملف BBL أو أكثر.",
       useFrom: "من ثانية", to: "لين", sec: "", analysed: "Hz", toggle: "إظهار أو إخفاء اللوق", remove: "حذف اللوق",
-      windows: "نافذة", noCurve: "ما في منحنى", noHigh: "ما في حركات قوية كفاية (فوق 500°/s)",
+      band: "إظهار التشتت (±sd)", lowData: "الخط المتقطع يعني حركة الستك قليلة (N أقل من 15)، فلا تعتمد عليه.", hidden: "مخفي: حركة الستك ما تكفي", windows: "نافذة", noCurve: "ما في منحنى", noHigh: "ما في حركات قوية كفاية (فوق 500°/s)",
       noInput: "حركة الستك ما تكفي", noVisible: "كل اللوقات مخفية.",
       axisLog: "المحور / اللوق", setting: "الإعداد", read: "التقييم",
       good: "زين", over: "Overshoot", highOver: "Overshoot عالي", soft: "ناعم",
@@ -329,7 +331,7 @@ self.onmessage = (e) => {
       const good = m.logs.filter((l) => !l.error);
       const skipped = m.logs.length - good.length;
       if (!m.logs.length) { setStatus(t("notLog", m.name), true); return; }
-      good.forEach((l) => state.logs.push(Object.assign({ file: m.name, color: PALETTE[colorIdx++ % PALETTE.length], visible: true }, l)));
+      good.forEach((l) => { const enough = l.axes.some((x) => (x.n ?? x.windows) >= LOW_N); state.logs.push(Object.assign({ file: m.name, color: PALETTE[colorIdx++ % PALETTE.length], visible: enough, thin: !enough }, l)); });
       if (!good.length) setStatus(t("noFlight", m.name, m.logs[0].error || "empty"), true);
       else setStatus(t("added", m.name, good.length, skipped));
       render();
@@ -355,9 +357,10 @@ self.onmessage = (e) => {
       el.innerHTML =
         '<button class="swatch" type="button" title="' + t("toggle") + '" aria-label="' + t("toggle") + '" style="background:' + l.color + '"></button>' +
         '<div class="name" title="' + esc(l.file) + '">' + esc(l.file) + ' <span class="tag">#' + (l.logIndex + 1) + "</span></div>" +
+        (l.thin ? '' : '') +
         (l.example ? "<span></span>" : '<button class="x" type="button" aria-label="' + t("remove") + '">×</button>') +
         '<div class="meta">' + esc((h.craft ? h.craft + " · " : "") + (h.firmware || "")) + "<br>R " + pidStr(h.roll) + " · P " + pidStr(h.pitch) + " · Y " + pidStr(h.yaw) +
-        "<br>" + fmt(l.duration, 0) + " s · " + l.rate + " " + t("analysed") + "</div>" +
+        "<br>" + fmt(l.duration, 0) + " s · " + l.rate + " " + t("analysed") + (l.thin ? "<br>" + t("hidden") : "") + "</div>" +
         (l.example ? "" : '<div class="trim">' + t("useFrom") + ' <input type="number" min="0" step="1" value="' + (l.tStart ?? "") + '" placeholder="0" aria-label="Start second" data-k="tStart"> ' + t("to") + ' <input type="number" min="0" step="1" value="' + (l.tEnd ?? "") + '" placeholder="' + Math.floor(l.duration) + '" aria-label="End second" data-k="tEnd"> ' + t("sec") + '</div>');
       el.querySelector(".swatch").onclick = () => { l.visible = !l.visible; render(); };
       const x = el.querySelector(".x");
@@ -375,6 +378,9 @@ self.onmessage = (e) => {
 
   // ---------- charts ----------
   const curveOf = (l, a) => (state.rng === "high" ? l.axes[a].respHigh : l.axes[a].resp);
+  const sdOf = (l, a) => (state.rng === "high" ? l.axes[a].sdHigh : l.axes[a].sd);
+  const nOf = (l, a) => (state.rng === "high" ? l.axes[a].nHigh : l.axes[a].n) ?? l.axes[a].windows;
+  const LOW_N = 15;
   function drawAxis(a) {
     const cv = $("c" + a), dpr = window.devicePixelRatio || 1;
     const W = cv.clientWidth, H = cv.clientHeight;
@@ -407,13 +413,25 @@ self.onmessage = (e) => {
     // target line
     ctx.strokeStyle = css("--muted"); ctx.setLineDash([4, 4]);
     ctx.beginPath(); ctx.moveTo(L, Y(1)); ctx.lineTo(W - R, Y(1)); ctx.stroke(); ctx.setLineDash([]);
+    // spread bands (mean ± sd)
+    if (state.band) vis.forEach((l) => {
+      const c = curveOf(l, a), d = sdOf(l, a);
+      if (!d) return;
+      const clampY = (v) => Y(Math.max(0, Math.min(ymax, v)));
+      ctx.fillStyle = l.color; ctx.globalAlpha = vis.length > 2 ? 0.08 : 0.16;
+      ctx.beginPath();
+      for (let i = 0; i <= state.win; i++) { const y = clampY(c[i] + d[i]); i ? ctx.lineTo(X(i), y) : ctx.moveTo(X(i), y); }
+      for (let i = state.win; i >= 0; i--) ctx.lineTo(X(i), clampY(c[i] - d[i]));
+      ctx.closePath(); ctx.fill(); ctx.globalAlpha = 1;
+    });
     // curves
     vis.forEach((l) => {
       const c = curveOf(l, a);
-      ctx.strokeStyle = l.color; ctx.lineWidth = 2; ctx.lineJoin = "round";
+      ctx.setLineDash(nOf(l, a) < LOW_N ? [6, 4] : []);
+      ctx.strokeStyle = l.color; ctx.lineWidth = 2.25; ctx.lineJoin = "round";
       ctx.beginPath();
       for (let i = 0; i <= state.win; i++) { const x = X(i), y = Y(Math.max(0, Math.min(ymax, c[i]))); i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); }
-      ctx.stroke();
+      ctx.stroke(); ctx.setLineDash([]);
     });
     // hover readout
     if (state.hover != null && vis.length) {
@@ -437,7 +455,7 @@ self.onmessage = (e) => {
       ctx.fillText(state.rng === "high" ? t("noHigh") : t("noCurve"), L + pw / 2, T + ph / 2);
     }
     const sub = $("sub" + a);
-    sub.textContent = vis.length ? vis.map((l) => l.axes[a].windows).reduce((x, y) => x + y, 0) + " " + t("windows") : "";
+    sub.textContent = vis.length ? "N = " + vis.map((l) => nOf(l, a)).join(" · ") : "";
   }
   function drawAll() { for (let a = 0; a < 3; a++) drawAxis(a); }
   for (let a = 0; a < 3; a++) {
@@ -464,15 +482,15 @@ self.onmessage = (e) => {
     const vis = state.logs.filter((l) => l.visible);
     const mt = $("mt");
     if (!vis.length) { mt.innerHTML = "<tr><td>" + t("noVisible") + "</td></tr>"; $("pt").innerHTML = mt.innerHTML; return; }
-    let h = "<tr><th>" + t("axisLog") + "</th><th>Peak</th><th>Overshoot</th><th>Delay</th><th>Rise</th><th>Settling</th><th>Windows</th><th>" + t("read") + "</th></tr>";
+    let h = "<tr><th>" + t("axisLog") + "</th><th>Peak</th><th>Overshoot</th><th>Delay</th><th>Rise</th><th>Settling</th><th>N</th><th>" + t("read") + "</th></tr>";
     for (let a = 0; a < 3; a++) {
       vis.forEach((l, i) => {
-        const ax = l.axes[a], m = ax.m;
+        const ax = l.axes[a], m = state.rng === "high" ? ax.mHigh : ax.m;
         h += "<tr>" + (i === 0 ? "" : "") + '<td>' + (i === 0 ? '<span class="axis-l" style="font:700 12px var(--f-display);letter-spacing:.08em;text-transform:uppercase;color:var(--muted);display:inline-block;width:52px">' + AX[a] + "</span>" : '<span style="display:inline-block;width:52px"></span>') +
           '<span class="dot" style="background:' + l.color + '"></span>' + esc(short(l)) + "</td>" +
           (m ? "<td>" + fmt(m.peak, 2) + "</td><td>" + fmt(m.overshoot, 0) + " %</td><td>" + fmt(m.delay, 1) + " ms</td><td>" + fmt(m.rise, 1) + " ms</td><td>" + fmt(m.settling, 0) + " ms</td>"
              : '<td colspan="5">' + t("noInput") + "</td>") +
-          "<td>" + ax.windows + "</td><td>" + (m ? verdict(m.peak) : "") + "</td></tr>";
+          "<td>" + nOf(l, a) + "</td><td>" + (m ? verdict(m.peak) : "") + "</td></tr>";
       });
     }
     mt.innerHTML = h;
@@ -510,8 +528,9 @@ self.onmessage = (e) => {
   document.querySelectorAll("[data-rng]").forEach((b) => b.onclick = () => {
     state.rng = b.dataset.rng;
     document.querySelectorAll("[data-rng]").forEach((x) => x.setAttribute("aria-pressed", x === b));
-    drawAll();
+    renderTables(); drawAll();
   });
+  $("bandChk").onchange = (e) => { state.band = e.target.checked; drawAll(); };
   $("openBtn").onclick = () => $("file").click();
   $("file").onchange = (e) => { addFiles(e.target.files); e.target.value = ""; };
   const drop = $("drop");

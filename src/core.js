@@ -315,16 +315,39 @@
     const axes = [];
     for (let a = 0; a < 3; a++) {
       const { responses, maxIn, rlen, dt } = axisResponse(eq.input[a], eq.gyro[a], eq.dt);
-      const used = maxIn.filter((m) => m > CFG.minInput).length;
-      const low = maxIn.map((m) => (m > CFG.minInput && m <= CFG.threshold ? 1 : 0));
-      const all = maxIn.map((m) => (m > CFG.minInput ? 1 : 0));
-      const hiW = maxIn.map((m) => (m > CFG.threshold ? 1 : 0));
-      const hiCount = hiW.reduce((x, y) => x + y, 0);
-      const resp = weightedModeAvr(responses, low.reduce((x, y) => x + y, 0) >= 10 ? low : all, rlen);
-      const respHigh = hiCount >= 10 ? weightedModeAvr(responses, hiW, rlen) : null;
+      // quality gate (PIDtoolbox style): keep windows whose response settles near 1
+      const s0 = Math.floor(0.2 / dt);
+      const ok = responses.map((r) => {
+        if (!r) return false;
+        let ss = 0, mx = 0;
+        for (let i = s0; i < rlen; i++) ss += r[i];
+        ss /= rlen - s0;
+        for (let i = 0; i < rlen; i++) if (Math.abs(r[i]) > mx) mx = Math.abs(r[i]);
+        return ss > 0.5 && ss < 1.5 && mx < 3;
+      });
+      const pick = (inRange) => {
+        const idx = [];
+        for (let w = 0; w < responses.length; w++) if (ok[w] && inRange(maxIn[w])) idx.push(w);
+        return idx;
+      };
+      const meanSd = (idx) => {
+        if (idx.length < 3) return null;
+        const mean = new Float64Array(rlen), sd = new Float64Array(rlen);
+        for (const w of idx) { const r = responses[w]; for (let i = 0; i < rlen; i++) mean[i] += r[i]; }
+        for (let i = 0; i < rlen; i++) mean[i] /= idx.length;
+        for (const w of idx) { const r = responses[w]; for (let i = 0; i < rlen; i++) sd[i] += (r[i] - mean[i]) ** 2; }
+        for (let i = 0; i < rlen; i++) sd[i] = Math.sqrt(sd[i] / idx.length);
+        return { mean, sd, n: idx.length };
+      };
+      let low = meanSd(pick((m) => m > CFG.minInput && m <= CFG.threshold));
+      if (!low) low = meanSd(pick((m) => m > CFG.minInput));
+      const high = meanSd(pick((m) => m > CFG.threshold));
       axes.push({
-        resp, respHigh, dt, windows: used, total: maxIn.length,
-        m: resp ? metrics(resp, dt) : null,
+        resp: low && low.mean, sd: low && low.sd, n: low ? low.n : 0,
+        respHigh: high && high.mean, sdHigh: high && high.sd, nHigh: high ? high.n : 0,
+        dt, windows: low ? low.n : 0, total: maxIn.length,
+        m: low ? metrics(low.mean, dt) : null,
+        mHigh: high ? metrics(high.mean, dt) : null,
       });
     }
     return { axes, dt: eq.dt, rate: Math.round(1 / eq.dt) };
