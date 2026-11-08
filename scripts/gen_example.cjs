@@ -18,9 +18,10 @@ for (const f of process.argv.slice(2)) {
   const r = GGStep.analyze(l);
   out.push({
     name: path.basename(f), logIndex: l.index, header: l.header, duration: l.duration, rate: r.rate,
+    health: (({ gapThr, ...h }) => h)(l.health), gapWin: r.gapWin, totalWin: r.axes[0].total,
     axes: r.axes.map((a) => ({
       resp: ds(a.resp, a.dt), sd: ds(a.sd, a.dt), respHigh: ds(a.respHigh, a.dt), sdHigh: ds(a.sdHigh, a.dt),
-      n: a.n, nHigh: a.nHigh, windows: a.windows, total: a.total, m: a.m, mHigh: a.mHigh,
+      n: a.n, nHigh: a.nHigh, windows: a.windows, total: a.total, m: a.m, mHigh: a.mHigh, ff: a.ff,
     })),
   });
 }
