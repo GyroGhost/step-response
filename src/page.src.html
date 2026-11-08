@@ -61,6 +61,12 @@ header.top { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; pad
 .swatch { width: 14px; height: 14px; border-radius: 3px; border: 0; padding: 0; cursor: pointer; }
 .log .name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .log .meta { grid-column: 2 / 4; font: 12px/1.45 var(--f-mono); color: var(--muted); font-variant-numeric: tabular-nums; }
+.health { grid-column: 2 / 4; font-size: 12px; line-height: 1.45; border-radius: 6px; padding: 6px 8px; border: 1px solid var(--line); background: var(--panel-2); color: var(--muted); }
+.health b { font: 600 12px var(--f-body); }
+.health.ok b { color: var(--good); } .health.warn { border-color: var(--warn); } .health.warn b { color: var(--warn); }
+.health.bad { border-color: var(--bad); background: var(--accent-soft); } .health.bad b { color: var(--bad); }
+.health .nums { font: 11.5px var(--f-mono); font-variant-numeric: tabular-nums; unicode-bidi: plaintext; display: block; margin-top: 2px; }
+.health .fix { display: block; margin-top: 3px; }
 .log .x { background: none; border: 0; color: var(--muted); cursor: pointer; font-size: 16px; line-height: 1; padding: 2px 4px; }
 .log .x:hover { color: var(--accent); }
 .log .trim { grid-column: 2 / 4; display: flex; gap: 6px; align-items: center; font-size: 12px; color: var(--muted); flex-wrap: wrap; }
@@ -163,6 +169,11 @@ footer a { color: var(--fg); }
           <p class="note" data-i18n="metricsN"></p>
         </div>
         <div>
+          <h3>Feedforward</h3>
+          <div class="tbl-wrap"><table id="fft"></table></div>
+          <p class="note" data-i18n="ffN"></p>
+        </div>
+        <div>
           <h3 data-i18n="tuneH"></h3>
           <div class="tbl-wrap"><table id="pt"></table></div>
           <p class="note" data-i18n="tuneN"></p>
@@ -188,7 +199,7 @@ const store = new Map();
 function pack(r) {
   return r.axes.map((a) => {
     const ds = (arr) => { if (!arr) return null; const o = []; for (let ms = 0; ms <= 500; ms++) { const i = Math.min(arr.length - 1, Math.round(ms / 1000 / a.dt)); o.push(arr[i]); } return o; };
-    return { resp: ds(a.resp), sd: ds(a.sd), respHigh: ds(a.respHigh), sdHigh: ds(a.sdHigh), n: a.n, nHigh: a.nHigh, windows: a.windows, total: a.total, m: a.m, mHigh: a.mHigh };
+    return { resp: ds(a.resp), sd: ds(a.sd), respHigh: ds(a.respHigh), sdHigh: ds(a.sdHigh), n: a.n, nHigh: a.nHigh, windows: a.windows, total: a.total, m: a.m, mHigh: a.mHigh, ff: a.ff };
   });
 }
 self.onmessage = (e) => {
@@ -202,13 +213,13 @@ self.onmessage = (e) => {
         const id = msg.id + ":" + l.index;
         store.set(id, l);
         const r = GGStep.analyze(l);
-        out.push({ id, logIndex: l.index, header: l.header, duration: l.duration, rate: r.rate, axes: pack(r) });
+        out.push({ id, logIndex: l.index, header: l.header, duration: l.duration, rate: r.rate, axes: pack(r), health: l.health, gapWin: r.gapWin, totalWin: r.axes[0].total });
       }
       self.postMessage({ type: "loaded", reqId: msg.reqId, name: msg.name, logs: out });
     } else if (msg.type === "trim") {
       const l = store.get(msg.id);
       const r = GGStep.analyze(l, { start: msg.start, end: msg.end });
-      self.postMessage({ type: "trimmed", id: msg.id, axes: pack(r) });
+      self.postMessage({ type: "trimmed", id: msg.id, axes: pack(r), gapWin: r.gapWin, totalWin: r.axes[0].total });
     } else if (msg.type === "drop") { store.delete(msg.id); }
   } catch (err) {
     self.postMessage({ type: "error", reqId: msg.reqId, name: msg.name, error: String(err && err.message || err) });
@@ -253,6 +264,17 @@ self.onmessage = (e) => {
       axisLog: "Axis / log", setting: "Setting", read: "Read",
       good: "Good", over: "Overshoot", highOver: "High overshoot", soft: "Soft",
       srcSet: "setpoint", srcRec: "rebuilt from gyro + P-term",
+      ffN: "Only fast stick moves are used. Lag is how far the gyro trails your stick (lower is sharper, below 0 means the gyro is ahead). Overshoot is how far the gyro goes past the new rate when a fast move ends. Too low FF: high lag, raise FF. Too high FF: lag near 0 or below with overshoot, lower FF. Overshoot with normal lag is usually P or D, not FF. Compare logs before and after a change.",
+      ffMoves: "Moves", ff_good: "Good", ff_low: "FF low", ff_high: "FF high", ff_over: "Overshoot (P/D?)",
+      ffNone: "not enough fast stick moves", ffFew: "few moves, read with care", ffNoSet: "needs Betaflight 4.x log (real setpoint)", ffNoData: "–",
+      hOk: "Log looks clean", hWarn: "Logging artefacts", hBad: "Log not reliable", hRow: "Log health",
+      hGaps: (n, p, ms) => n + " gaps · " + p + "% of the flight missing · longest " + ms + " ms",
+      hCorrupt: (n, p) => n + " corrupt frames (" + p + "%)",
+      hLowRate: (hz) => "Logging rate only " + hz + " Hz",
+      hSkipped: (k, n) => k + " / " + n + " windows skipped",
+      hFix: "Blackbox dropped data, so the gyro trace has fake jumps. Windows that touch a gap are left out. Erase the flash, lower the blackbox rate (2 kHz or less on onboard flash) or use a faster SD card, then fly again.",
+      hFixRate: "Very low logging rate, so fast moves aren't captured well. Raise the blackbox rate if your flash can keep up.",
+      healthStatus: (n) => "⚠ " + n + " with logging artefacts — see the log card.",
     },
     ar: {
       tagline: "أداة مجانية تحلل سجلات الطيران من Blackbox حق Betaflight، وتطلع لك الـ Step Response وتقارن بين أكثر من سجل. تشتغل داخل المتصفح، وملفاتك ما تطلع من جهازك.",
@@ -282,6 +304,17 @@ self.onmessage = (e) => {
       axisLog: "المحور / السجل", setting: "الإعداد", read: "التقييم",
       good: "ممتاز", over: "Overshoot", highOver: "Overshoot عالي", soft: "بطيء",
       srcSet: "setpoint", srcRec: "محسوب من gyro و P-term",
+      ffN: "التحليل على الحركات السريعة بس. Lag يعني كم الجايرو متأخر عن عصا التحكم، كل ما قل كان أحسن، وإذا طلع بالسالب يعني الجايرو سابق العصا. Overshoot يعني كم الجايرو يتعدى السرعة الجديدة لما تخلص الحركة. إذا الـ FF قليل يطلع Lag عالي، فارفعه. وإذا زايد يطلع Lag قريب من الصفر أو بالسالب مع Overshoot، فنزّله. وإذا فيه Overshoot والـ Lag طبيعي، فغالباً السبب P أو D مو FF. قارن السجلات قبل وبعد التعديل.",
+      ffMoves: "الحركات", ff_good: "ممتاز", ff_low: "FF قليل", ff_high: "FF زايد", ff_over: "Overshoot (P/D؟)",
+      ffNone: "ما في حركات سريعة كفاية", ffFew: "حركات قليلة، لا تعتمد عليه وايد", ffNoSet: "يحتاج سجل من Betaflight 4 وفوق", ffNoData: "–",
+      hOk: "السجل سليم", hWarn: "فيه أخطاء تسجيل", hBad: "السجل مو موثوق", hRow: "سلامة السجل",
+      hGaps: (n, p, ms) => "‎" + n + " gaps · " + p + "% missing · max " + ms + " ms",
+      hCorrupt: (n, p) => "‎" + n + " corrupt frames (" + p + "%)",
+      hLowRate: (hz) => "‎Logging rate " + hz + " Hz",
+      hSkipped: (k, n) => "‎" + k + " / " + n + " windows skipped",
+      hFix: "البلاك بوكس ضيّع بيانات، فخط الجايرو فيه قفزات مو حقيقية. المقاطع اللي فيها نقص انشالت من التحليل. امسح الفلاش ونزّل سرعة التسجيل، أو استخدم كرت أسرع، وطير مرة ثانية.",
+      hFixRate: "سرعة التسجيل واطية وايد، فالحركات السريعة ما تنقرا زين. ارفعها إذا الفلاش يتحمل.",
+      healthStatus: (n) => "⚠ فيه " + n + " سجل فيه أخطاء تسجيل، شوف بطاقة السجل.",
     },
   };
   let lang = "en";
@@ -333,11 +366,14 @@ self.onmessage = (e) => {
       if (!m.logs.length) { setStatus(t("notLog", m.name), true); return; }
       good.forEach((l) => { const enough = l.axes.some((x) => (x.n ?? x.windows) >= LOW_N); state.logs.push(Object.assign({ file: m.name, color: PALETTE[colorIdx++ % PALETTE.length], visible: enough, thin: !enough }, l)); });
       if (!good.length) setStatus(t("noFlight", m.name, m.logs[0].error || "empty"), true);
-      else setStatus(t("added", m.name, good.length, skipped));
+      else {
+        const badN = good.filter((l) => l.health && l.health.level !== "ok").length;
+        setStatus(t("added", m.name, good.length, skipped) + (badN ? " " + t("healthStatus", badN) : ""), badN > 0);
+      }
       render();
     } else if (m.type === "trimmed") {
       const l = state.logs.find((x) => x.id === m.id);
-      if (l) { l.axes = m.axes; setStatus(t("reanalysed", short(l))); render(); }
+      if (l) { l.axes = m.axes; l.gapWin = m.gapWin; l.totalWin = m.totalWin; setStatus(t("reanalysed", short(l))); render(); }
     } else if (m.type === "error") {
       setStatus((m.name || "Log") + ": " + m.error, true);
     }
@@ -361,6 +397,7 @@ self.onmessage = (e) => {
         (l.example ? "<span></span>" : '<button class="x" type="button" aria-label="' + t("remove") + '">×</button>') +
         '<div class="meta">' + esc((h.craft ? h.craft + " · " : "") + (h.firmware || "")) + "<br>R " + pidStr(h.roll) + " · P " + pidStr(h.pitch) + " · Y " + pidStr(h.yaw) +
         "<br>" + fmt(l.duration, 0) + " s · " + l.rate + " " + t("analysed") + (l.thin ? "<br>" + t("hidden") : "") + "</div>" +
+        healthHtml(l) +
         (l.example ? "" : '<div class="trim">' + t("useFrom") + ' <input type="number" min="0" step="1" value="' + (l.tStart ?? "") + '" placeholder="0" aria-label="Start second" data-k="tStart"> ' + t("to") + ' <input type="number" min="0" step="1" value="' + (l.tEnd ?? "") + '" placeholder="' + Math.floor(l.duration) + '" aria-label="End second" data-k="tEnd"> ' + t("sec") + '</div>');
       el.querySelector(".swatch").onclick = () => { l.visible = !l.visible; render(); };
       const x = el.querySelector(".x");
@@ -373,6 +410,19 @@ self.onmessage = (e) => {
       });
       box.appendChild(el);
     });
+  }
+  function healthHtml(l) {
+    const h = l.health;
+    if (!h) return "";
+    if (h.level === "ok") return '<div class="health ok"><b>' + t("hOk") + "</b>" + "</div>";
+    const nums = [];
+    if (h.gaps) nums.push(t("hGaps", h.gaps, h.lostPct, h.longestGapMs));
+    if (h.corrupt) nums.push(t("hCorrupt", h.corrupt, h.corruptPct));
+    if (h.reasons.includes("lowRate")) nums.push(t("hLowRate", h.rate));
+    if (l.gapWin) nums.push(t("hSkipped", l.gapWin, l.totalWin));
+    const fix = h.reasons.includes("lowRate") && h.reasons.length === 1 ? t("hFixRate") : t("hFix");
+    return '<div class="health ' + h.level + '"><b>' + t(h.level === "bad" ? "hBad" : "hWarn") + "</b>" +
+      nums.map((x) => '<span class="nums">' + x + "</span>").join("") + '<span class="fix">' + fix + "</span></div>";
   }
   const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 
@@ -481,7 +531,7 @@ self.onmessage = (e) => {
   function renderTables() {
     const vis = state.logs.filter((l) => l.visible);
     const mt = $("mt");
-    if (!vis.length) { mt.innerHTML = "<tr><td>" + t("noVisible") + "</td></tr>"; $("pt").innerHTML = mt.innerHTML; return; }
+    if (!vis.length) { mt.innerHTML = "<tr><td>" + t("noVisible") + "</td></tr>"; $("pt").innerHTML = mt.innerHTML; $("fft").innerHTML = mt.innerHTML; return; }
     let h = "<tr><th>" + t("axisLog") + "</th><th>Peak</th><th>Overshoot</th><th>Delay</th><th>Rise</th><th>Settling</th><th>N</th><th>" + t("read") + "</th></tr>";
     for (let a = 0; a < 3; a++) {
       vis.forEach((l, i) => {
@@ -494,6 +544,7 @@ self.onmessage = (e) => {
       });
     }
     mt.innerHTML = h;
+    renderFF(vis);
 
     const rows = [
       ["Firmware", (x) => x.firmware],
@@ -506,13 +557,43 @@ self.onmessage = (e) => {
       ["TPA rate / breakpoint", (x) => (x.tpaRate != null ? x.tpaRate + " / " + (x.tpaBreakpoint ?? "–") : "–")],
       ["Setpoint source", (x) => (x.setpointSource === "setpoint" ? t("srcSet") : t("srcRec"))],
     ];
+    const hRows = [
+      ["Logging rate", (l) => (l.health ? l.health.rate + " Hz" : "–")],
+      [t("hRow"), (l) => (!l.health ? "–" : l.health.level === "ok" ? t("hOk") : (l.health.level === "bad" ? t("hBad") : t("hWarn")) + " · " + l.health.lostPct + "% / " + l.health.corrupt)],
+    ];
     let p = "<tr><th>" + t("setting") + "</th>" + vis.map((l) => '<th><span class="dot" style="display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:6px;background:' + l.color + '"></span>' + esc(short(l)) + "</th>").join("") + "</tr>";
     rows.forEach(([label, f]) => {
       const vals = vis.map((l) => String(f(l.header) ?? "–"));
       const differs = new Set(vals).size > 1;
       p += "<tr><td>" + label + "</td>" + vals.map((v) => '<td class="' + (differs ? "diff" : "") + '">' + esc(v) + "</td>").join("") + "</tr>";
     });
+    hRows.forEach(([label, f]) => {
+      const vals = vis.map((l) => String(f(l)));
+      const differs = new Set(vals).size > 1;
+      p += "<tr><td>" + esc(label) + "</td>" + vals.map((v) => '<td class="' + (differs ? "diff" : "") + '">' + esc(v) + "</td>").join("") + "</tr>";
+    });
     $("pt").innerHTML = p;
+  }
+  function ffChip(v) {
+    const cls = { good: "good", low: "warn", high: "bad", over: "warn" }[v];
+    return cls ? '<span class="chip ' + cls + '">' + t("ff_" + v) + "</span>" : "";
+  }
+  function renderFF(vis) {
+    let h = "<tr><th>" + t("axisLog") + "</th><th>Lag</th><th>Overshoot</th><th>" + t("ffMoves") + "</th><th>" + t("read") + "</th></tr>";
+    for (let a = 0; a < 3; a++) {
+      vis.forEach((l, i) => {
+        const f = l.axes[a].ff;
+        h += '<tr><td><span style="font:700 12px var(--f-display);letter-spacing:.08em;text-transform:uppercase;color:var(--muted);display:inline-block;width:52px">' + (i === 0 ? AX[a] : "") + "</span>" +
+          '<span class="dot" style="background:' + l.color + '"></span>' + esc(short(l)) + "</td>";
+        if (!f) h += '<td colspan="4">' + t("ffNoData") + "</td>";
+        else if (f.verdict === "noSetpoint") h += '<td colspan="4">' + t("ffNoSet") + "</td>";
+        else if (f.verdict === "none") h += '<td colspan="4">' + t("ffNone") + "</td>";
+        else h += "<td>" + fmt(f.lagMs, 1) + " ms</td><td>" + (f.overshoot == null ? "–" : fmt(f.overshoot, 0) + " %") + "</td><td>" + f.events + "</td><td>" +
+          (f.verdict === "few" ? t("ffFew") : ffChip(f.verdict)) + "</td>";
+        h += "</tr>";
+      });
+    }
+    $("fft").innerHTML = h;
   }
   const short = (l) => l.file.replace(/\.(bbl|bfl|txt)$/i, "") + " #" + (l.logIndex + 1);
 

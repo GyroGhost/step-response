@@ -57,11 +57,12 @@
     };
     const scale = sc.blackbox_high_resolution > 0 ? 10 : 1;
     const pGain = [sc.rollPID, sc.pitchPID, sc.yawPID].map((p) => (p && p[0]) || 1);
-    let lastT = -Infinity;
+    let lastT = -Infinity, invalid = 0, backwards = 0;
     parser.onFrameReady = function (valid, frame, type) {
-      if (!valid || !frame || (type !== "I" && type !== "P")) return;
+      if (type !== "I" && type !== "P") return;
+      if (!valid || !frame) { invalid++; return; }
       const tt = frame[fTime];
-      if (!(tt > lastT)) return; // drop non-monotonic
+      if (!(tt > lastT)) { backwards++; return; } // drop non-monotonic
       lastT = tt;
       if (n >= cap) grow();
       t[n] = tt;
@@ -91,11 +92,53 @@
       },
       setpointSource: hasSet ? "setpoint" : "reconstructed (gyro + P-term)",
     };
+    const time = t.subarray(0, n);
+    const health = logHealth(time, parser.stats, invalid, backwards);
     return {
       index, header: hdr,
-      time: t.subarray(0, n), gyro: g.map((a) => a.subarray(0, n)),
+      time, gyro: g.map((a) => a.subarray(0, n)),
       input: s.map((a) => a.subarray(0, n)), throttle: th.subarray(0, n),
       duration: (t[n - 1] - t[0]) / 1e6,
+      health, gapThr: health.gapThr,
+    };
+  }
+
+  // ---------- log health (logging artefacts) ----------
+  // Dropped or corrupt frames leave holes in the time axis. Plotting tools join the points on both
+  // sides with a straight line, which looks like a jagged gyro trace that never happened.
+  const HEALTH = { gapFactor: 2.5, minGapUs: 1500, warnLost: 0.5, badLost: 5, warnCorrupt: 0.2, badCorrupt: 2, minRate: 500 };
+
+  function logHealth(time, stats, invalid, backwards) {
+    const n = time.length;
+    // median frame interval from an even sample of the diffs
+    const step = Math.max(1, Math.floor((n - 1) / 20000));
+    const sample = [];
+    for (let i = 1; i < n; i += step) sample.push(time[i] - time[i - 1]);
+    sample.sort((a, b) => a - b);
+    const med = sample[sample.length >> 1] || 1;
+    // ignore sub-1.5 ms jitter on fast logs; it doesn't bend the step response
+    const gapThr = Math.max(med * HEALTH.gapFactor, HEALTH.minGapUs);
+    let gaps = 0, lost = 0, longest = 0;
+    for (let i = 1; i < n; i++) {
+      const d = time[i] - time[i - 1];
+      if (d > gapThr) { gaps++; lost += d - med; if (d > longest) longest = d; }
+    }
+    const span = time[n - 1] - time[0] || 1;
+    let corrupt = (stats && stats.totalCorruptFrames) || 0;
+    if (stats && stats.frame) for (const k of ["I", "P"]) if (stats.frame[k]) corrupt += stats.frame[k].desyncCount || 0;
+    corrupt += invalid + backwards;
+    const lostPct = (lost / span) * 100;
+    const corruptPct = (corrupt / (n + corrupt)) * 100;
+    const rate = Math.round(1e6 / med);
+    const reasons = [];
+    if (lostPct >= HEALTH.warnLost) reasons.push("gaps");
+    if (corruptPct >= HEALTH.warnCorrupt) reasons.push("corrupt");
+    if (rate < HEALTH.minRate) reasons.push("lowRate");
+    const level = lostPct >= HEALTH.badLost || corruptPct >= HEALTH.badCorrupt ? "bad" : reasons.length ? "warn" : "ok";
+    return {
+      level, reasons, rate, frames: n, gaps, corrupt,
+      lostPct: +lostPct.toFixed(2), corruptPct: +corruptPct.toFixed(2),
+      longestGapMs: +(longest / 1000).toFixed(1), gapThr,
     };
   }
 
@@ -173,12 +216,14 @@
     const medDt = span / (i1 - i0);
     const dt = Math.max(medDt, 1 / CFG.maxRate);
     const n = Math.floor(span / dt);
-    const out = { dt, n, gyro: [], input: [] };
+    const out = { dt, n, gyro: [], input: [], bad: new Uint8Array(n) };
     for (let a = 0; a < 3; a++) { out.gyro.push(new Float64Array(n)); out.input.push(new Float64Array(n)); }
+    const gapThr = log.gapThr || Infinity;
     let j = i0;
     for (let i = 0; i < n; i++) {
       const tt = t[i0] + i * dt * 1e6;
       while (j < i1 - 1 && t[j + 1] < tt) j++;
+      if (t[j + 1] - t[j] > gapThr) out.bad[i] = 1; // interpolated across missing frames
       const f = (tt - t[j]) / ((t[j + 1] - t[j]) || 1);
       for (let a = 0; a < 3; a++) {
         out.gyro[a][i] = log.gyro[a][j] + (log.gyro[a][j + 1] - log.gyro[a][j]) * f;
@@ -202,7 +247,7 @@
     return inv;
   }
 
-  function axisResponse(inp, out, dt) {
+  function axisResponse(inp, out, dt, bad) {
     const flen = Math.floor(CFG.framelen / dt);
     const rlen = Math.floor(CFG.resplen / dt);
     const shift = Math.floor(flen / CFG.superpos);
@@ -215,10 +260,15 @@
     for (let i = 0; i < flen; i++) han[i] = 0.5 - 0.5 * Math.cos((2 * Math.PI * i) / (flen - 1));
     const invSn = snWeights(N, dt);
     const responses = [], maxIn = [];
+    // prefix count of gap samples so each window can be checked in O(1)
+    const badSum = new Uint32Array(inp.length + 1);
+    if (bad) for (let i = 0; i < inp.length; i++) badSum[i + 1] = badSum[i] + bad[i];
+    let gapWin = 0;
     const hr = new Float64Array(N), hi = new Float64Array(N), gr = new Float64Array(N), gi = new Float64Array(N);
     for (let w = 0; w < wins; w++) {
       const o = w * shift;
       if (o + flen > inp.length) break;
+      if (badSum[o + flen] - badSum[o] > 0) { maxIn.push(0); responses.push(null); gapWin++; continue; }
       hr.fill(0); hi.fill(0); gr.fill(0); gi.fill(0);
       let mx = 0;
       for (let i = 0; i < flen; i++) {
@@ -242,7 +292,7 @@
       for (let i = 0; i < rlen; i++) { acc += gr[i]; r[i] = acc; }
       responses.push(r);
     }
-    return { responses, maxIn, rlen, dt };
+    return { responses, maxIn, rlen, dt, gapWin };
   }
 
   // PID-Analyzer weighted_mode_avr: 2D histogram -> vertical gaussian -> column-normalised -> weighted avg (w^2)
@@ -313,8 +363,10 @@
     opts = opts || {};
     const eq = equalize(log, opts.start, opts.end);
     const axes = [];
+    let gapWin = 0;
     for (let a = 0; a < 3; a++) {
-      const { responses, maxIn, rlen, dt } = axisResponse(eq.input[a], eq.gyro[a], eq.dt);
+      const { responses, maxIn, rlen, dt, gapWin: gw } = axisResponse(eq.input[a], eq.gyro[a], eq.dt, eq.bad);
+      gapWin = gw;
       // quality gate (PIDtoolbox style): keep windows whose response settles near 1
       const s0 = Math.floor(0.2 / dt);
       const ok = responses.map((r) => {
@@ -348,10 +400,63 @@
         dt, windows: low ? low.n : 0, total: maxIn.length,
         m: low ? metrics(low.mean, dt) : null,
         mHigh: high ? metrics(high.mean, dt) : null,
+        ff: log.header.setpointSource === "setpoint" ? ffAxis(eq.input[a], eq.gyro[a], eq.dt, eq.bad) : { verdict: "noSetpoint" },
       });
     }
-    return { axes, dt: eq.dt, rate: Math.round(1 / eq.dt) };
+    return { axes, dt: eq.dt, rate: Math.round(1 / eq.dt), gapWin };
   }
 
-  root.GGStep = { loadLogs, analyze, CFG };
+  // ---------- feedforward check ----------
+  // Looks only at fast stick moves. Lag = how far the gyro trails the setpoint (best time shift).
+  // Overshoot = how far the gyro goes past the setpoint right after a fast move reaches its new rate.
+  const FF = { minSlope: 3000, minRate: 30, minPlateau: 200, maxLagMs: 40, minLagMs: -10, lagLow: 3, lagHigh: 12, over: 12, minEvents: 5, minFastS: 0.25 };
+
+  function ffAxis(sp, gy, dt, bad) {
+    const n = sp.length, ms = (x) => Math.max(1, Math.round(x / 1000 / dt));
+    const k = ms(5), lagMin = -ms(-FF.minLagMs), lagMax = ms(FF.maxLagMs);
+    const ds = new Float64Array(n);
+    for (let i = k; i < n - k; i++) ds[i] = (sp[i + k] - sp[i - k]) / (2 * k * dt);
+    // bad sample near i?  prefix sum over gap marks
+    const bs = new Uint32Array(n + 1);
+    for (let i = 0; i < n; i++) bs[i + 1] = bs[i] + (bad ? bad[i] : 0);
+    const clean = (i0, i1) => i0 >= 0 && i1 < n && bs[i1 + 1] - bs[i0] === 0;
+    const fast = new Uint8Array(n);
+    let nFast = 0;
+    for (let i = k; i < n - k; i++) {
+      if (Math.abs(ds[i]) > FF.minSlope && Math.abs(sp[i]) > FF.minRate && clean(i + lagMin, i + lagMax)) { fast[i] = 1; nFast++; }
+    }
+    if (nFast * dt < FF.minFastS) return { verdict: "none", fastS: +(nFast * dt).toFixed(2), events: 0 };
+    // lag: time shift that best lines the gyro up with the setpoint during fast moves
+    let best = Infinity, lag = 0;
+    for (let L = lagMin; L <= lagMax; L++) {
+      let e = 0;
+      for (let i = 0; i < n; i++) if (fast[i]) { const d = gy[i + L] - sp[i]; e += d * d; }
+      if (e < best) { best = e; lag = L; }
+    }
+    // overshoot after each fast move away from zero that settles on a new rate
+    const overs = [];
+    const hold = ms(20), look = ms(60);
+    for (let i = 1; i < n; i++) {
+      if (!(fast[i - 1] && !fast[i])) continue;
+      const e = i - 1;
+      if (Math.sign(ds[e]) !== Math.sign(sp[e])) continue; // only moves that speed the craft up
+      const P = sp[Math.min(n - 1, e + hold)];
+      if (Math.abs(P) < FF.minPlateau || Math.abs(P - sp[e]) > 0.1 * Math.abs(P) || !clean(e, e + look)) continue;
+      let mx = -Infinity;
+      for (let j = e; j <= Math.min(n - 1, e + look); j++) mx = Math.max(mx, Math.sign(P) * gy[j]);
+      overs.push((mx / Math.abs(P) - 1) * 100);
+    }
+    overs.sort((a, b) => a - b);
+    const over = overs.length ? overs[overs.length >> 1] : null;
+    const lagMs = +(lag * dt * 1000).toFixed(1);
+    let verdict;
+    if (overs.length < FF.minEvents) verdict = lagMs > FF.lagHigh ? "low" : "few";
+    else if (lagMs < 0 || (over > FF.over && lagMs <= FF.lagLow)) verdict = "high"; // gyro ahead of the stick
+    else if (lagMs > FF.lagHigh) verdict = "low";
+    else if (over > FF.over) verdict = "over";
+    else verdict = "good";
+    return { verdict, lagMs, overshoot: over == null ? null : +over.toFixed(1), events: overs.length, fastS: +(nFast * dt).toFixed(2) };
+  }
+
+  root.GGStep = { loadLogs, analyze, CFG, HEALTH, FF, ffAxis };
 })(typeof window !== "undefined" ? window : globalThis);
