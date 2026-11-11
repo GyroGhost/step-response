@@ -27,6 +27,22 @@
     return logs;
   }
 
+  // Raw "H name:value" header lines. The parser folds d_min/d_max and ff_weight into the PID arrays,
+  // so read those straight from the text instead of guessing array positions.
+  function rawHeader(bytes, start, end) {
+    const out = {};
+    let i = start;
+    while (i < end && bytes[i] === 0x48 /* H */ && bytes[i + 1] === 0x20) {
+      let j = i; while (j < end && bytes[j] !== 0x0a) j++;
+      let line = ""; for (let q = i + 2; q < j; q++) line += String.fromCharCode(bytes[q]);
+      const c = line.indexOf(":");
+      if (c > 0) out[line.slice(0, c)] = line.slice(c + 1).trim();
+      i = j + 1;
+    }
+    return out;
+  }
+  const triple = (v) => (v ? v.split(",").slice(0, 3).map((x) => parseInt(x, 10)) : null);
+
   function parseOne(bytes, start, end, index) {
     const P = Parser();
     const parser = new P(bytes);
@@ -84,12 +100,14 @@
     parser.parseLogData(false);
     if (n < 2000) throw new Error("Log too short (" + n + " frames)");
 
+    const raw = rawHeader(bytes, start, end);
     const hdr = {
       craft: sc["Craft name"] || "",
       firmware: [sc["Firmware revision"] || sc.firmwareVersion || ""].join(""),
       firmwareVersion: sc.firmwareVersion,
       roll: sc.rollPID, pitch: sc.pitchPID, yaw: sc.yawPID,
-      dMin: sc.d_min, ff: sc.ff_weight,
+      dMin: triple(raw.d_max || raw.d_min), dLabel: raw.d_max ? "D max" : "D min",
+      ff: triple(raw.ff_weight || raw.feedforward_weight),
       looptime: sc.looptime, pDenom: sc.pid_process_denom,
       tpaRate: sc.tpa_rate, tpaBreakpoint: sc.tpa_breakpoint,
       dterm_lpf1: sc.dterm_lpf1_static_hz, gyro_lpf1: sc.gyro_lowpass_hz,
