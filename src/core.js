@@ -38,6 +38,8 @@
     const fGyro = [0, 1, 2].map((a) => need("gyroADC[" + a + "]"));
     const fSet = [0, 1, 2].map((a) => need("setpoint[" + a + "]"));
     const fP = [0, 1, 2].map((a) => need("axisP[" + a + "]"));
+    const fF = [0, 1, 2].map((a) => need("axisF[" + a + "]"));
+    const hasTerms = fF[0] >= 0 && fP[0] >= 0;
     const fThr = need("rcCommand[3]");
     if (fTime < 0 || fGyro[0] < 0) throw new Error("Log has no gyro data");
     const hasSet = fSet[0] >= 0;
@@ -48,12 +50,16 @@
     let g = [0, 1, 2].map(() => new Float32Array(cap));
     let s = [0, 1, 2].map(() => new Float32Array(cap));
     let th = new Float32Array(cap);
+    let pt = hasTerms ? [0, 1, 2].map(() => new Float32Array(cap)) : null;
+    let ft = hasTerms ? [0, 1, 2].map(() => new Float32Array(cap)) : null;
     const grow = () => {
       cap *= 2;
       const nt = new Float64Array(cap); nt.set(t); t = nt;
       g = g.map((a) => { const b = new Float32Array(cap); b.set(a); return b; });
       s = s.map((a) => { const b = new Float32Array(cap); b.set(a); return b; });
       const nth = new Float32Array(cap); nth.set(th); th = nth;
+      const g2 = (arr) => arr && arr.map((a) => { const b = new Float32Array(cap); b.set(a); return b; });
+      pt = g2(pt); ft = g2(ft);
     };
     const scale = sc.blackbox_high_resolution > 0 ? 10 : 1;
     const pGain = [sc.rollPID, sc.pitchPID, sc.yawPID].map((p) => (p && p[0]) || 1);
@@ -70,6 +76,7 @@
         const gy = frame[fGyro[a]] / scale;
         g[a][n] = gy;
         s[a][n] = hasSet ? frame[fSet[a]] / scale : gy + frame[fP[a]] / (0.032029 * pGain[a]);
+        if (hasTerms) { pt[a][n] = frame[fP[a]]; ft[a][n] = fF[a] >= 0 ? frame[fF[a]] : 0; }
       }
       th[n] = fThr >= 0 ? frame[fThr] : 0;
       n++;
@@ -98,6 +105,7 @@
       index, header: hdr,
       time, gyro: g.map((a) => a.subarray(0, n)),
       input: s.map((a) => a.subarray(0, n)), throttle: th.subarray(0, n),
+      pterm: pt && pt.map((a) => a.subarray(0, n)), fterm: ft && ft.map((a) => a.subarray(0, n)),
       duration: (t[n - 1] - t[0]) / 1e6,
       health, gapThr: health.gapThr,
     };
@@ -218,6 +226,8 @@
     const n = Math.floor(span / dt);
     const out = { dt, n, gyro: [], input: [], bad: new Uint8Array(n) };
     for (let a = 0; a < 3; a++) { out.gyro.push(new Float64Array(n)); out.input.push(new Float64Array(n)); }
+    const terms = !!(log.pterm && log.fterm);
+    if (terms) { out.pterm = [0, 1, 2].map(() => new Float64Array(n)); out.fterm = [0, 1, 2].map(() => new Float64Array(n)); }
     const gapThr = log.gapThr || Infinity;
     let j = i0;
     for (let i = 0; i < n; i++) {
@@ -228,6 +238,10 @@
       for (let a = 0; a < 3; a++) {
         out.gyro[a][i] = log.gyro[a][j] + (log.gyro[a][j + 1] - log.gyro[a][j]) * f;
         out.input[a][i] = log.input[a][j] + (log.input[a][j + 1] - log.input[a][j]) * f;
+        if (terms) {
+          out.pterm[a][i] = log.pterm[a][j] + (log.pterm[a][j + 1] - log.pterm[a][j]) * f;
+          out.fterm[a][i] = log.fterm[a][j] + (log.fterm[a][j + 1] - log.fterm[a][j]) * f;
+        }
       }
     }
     return out;
@@ -400,7 +414,7 @@
         dt, windows: low ? low.n : 0, total: maxIn.length,
         m: low ? metrics(low.mean, dt) : null,
         mHigh: high ? metrics(high.mean, dt) : null,
-        ff: log.header.setpointSource === "setpoint" ? ffAxis(eq.input[a], eq.gyro[a], eq.dt, eq.bad) : { verdict: "noSetpoint" },
+        ff: log.header.setpointSource === "setpoint" ? ffAxis(eq.input[a], eq.gyro[a], eq.dt, eq.bad, eq.pterm && eq.pterm[a], eq.fterm && eq.fterm[a]) : { verdict: "noSetpoint" },
       });
     }
     return { axes, dt: eq.dt, rate: Math.round(1 / eq.dt), gapWin };
@@ -409,9 +423,15 @@
   // ---------- feedforward check ----------
   // Looks only at fast stick moves. Lag = how far the gyro trails the setpoint (best time shift).
   // Overshoot = how far the gyro goes past the setpoint right after a fast move reaches its new rate.
-  const FF = { minSlope: 3000, minRate: 30, minPlateau: 200, maxLagMs: 40, minLagMs: -10, lagLow: 3, lagHigh: 12, over: 12, minEvents: 5, minFastS: 0.25, minTrack: 0.4 };
+  const FF = { minSlope: 3000, minRate: 30, minPlateau: 200, maxLagMs: 40, minLagMs: -10, lagLow: 3, lagHigh: 12, over: 12, minEvents: 5, minFastS: 0.25, minTrack: 0.4, moveSlope: 500, ffDom: 0.5, pDom: 0.3 };
+  function shareOnly(sp, ds, k, n, dt, bad, pt, ft) {
+    if (!pt || !ft) return null;
+    let sf = 0, sp2 = 0, m = 0;
+    for (let i = k; i < n - k; i++) { if (Math.abs(ds[i]) < FF.moveSlope || (bad && bad[i])) continue; sf += Math.abs(ft[i]); sp2 += Math.abs(pt[i]); m++; }
+    return m * dt >= FF.minFastS && sf + sp2 > 0 ? +(sf / (sf + sp2)).toFixed(2) : null;
+  }
 
-  function ffAxis(sp, gy, dt, bad) {
+  function ffAxis(sp, gy, dt, bad, pt, ft) {
     const n = sp.length, ms = (x) => Math.max(1, Math.round(x / 1000 / dt));
     const k = ms(5), lagMin = -ms(-FF.minLagMs), lagMax = ms(FF.maxLagMs);
     const ds = new Float64Array(n);
@@ -425,7 +445,7 @@
     for (let i = k; i < n - k; i++) {
       if (Math.abs(ds[i]) > FF.minSlope && Math.abs(sp[i]) > FF.minRate && clean(i + lagMin, i + lagMax)) { fast[i] = 1; nFast++; }
     }
-    if (nFast * dt < FF.minFastS) return { verdict: "none", fastS: +(nFast * dt).toFixed(2), events: 0 };
+    if (nFast * dt < FF.minFastS) return { verdict: "none", fastS: +(nFast * dt).toFixed(2), events: 0, share: shareOnly(sp, ds, k, n, dt, bad, pt, ft) };
     // lag: time shift that best lines the gyro up with the setpoint during fast moves
     let best = Infinity, lag = 0;
     for (let L = lagMin; L <= lagMax; L++) {
@@ -437,6 +457,8 @@
     let gs = 0, ss = 0;
     for (let i = 0; i < n; i++) if (fast[i]) { gs += gy[i + lag] * sp[i]; ss += sp[i] * sp[i]; }
     const track = ss ? gs / ss : 0;
+    // who pushes during stick moves: FF share of |P| + |FF| while the stick is moving (any speed)
+    const share = shareOnly(sp, ds, k, n, dt, bad, pt, ft);
     const lagPinned = lag === lagMin || lag === lagMax; // best shift sits on the search limit: no real match
     // overshoot after each fast move away from zero that settles on a new rate
     const overs = [];
@@ -461,9 +483,9 @@
     else if (overs.length < FF.minEvents) verdict = lagMs > FF.lagHigh ? "low" : "few";
     else if (lagMs < 0 || (over > FF.over && lagMs <= FF.lagLow)) verdict = "high"; // gyro ahead of the stick
     else if (lagMs > FF.lagHigh) verdict = "low";
-    else if (over > FF.over) verdict = "over";
+    else if (over > FF.over) verdict = share == null ? "over" : share >= FF.ffDom ? "overFF" : share <= FF.pDom ? "over" : "overMix";
     else verdict = "good";
-    return { verdict, lagMs, track: +track.toFixed(2), overshoot: over == null ? null : +over.toFixed(1), events: overs.length, fastS: +(nFast * dt).toFixed(2) };
+    return { verdict, lagMs, track: +track.toFixed(2), share: share == null ? null : +share.toFixed(2), overshoot: over == null ? null : +over.toFixed(1), events: overs.length, fastS: +(nFast * dt).toFixed(2) };
   }
 
   root.GGStep = { loadLogs, analyze, CFG, HEALTH, FF, ffAxis };
