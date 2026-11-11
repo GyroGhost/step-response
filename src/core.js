@@ -230,7 +230,7 @@
   };
 
   // ---------- step response ----------
-  const CFG = { framelen: 1.0, resplen: 0.5, cutfreq: 25, superpos: 16, threshold: 500, minInput: 20, maxRate: 4000 };
+  const CFG = { groundThr: 1100, framelen: 1.0, resplen: 0.5, cutfreq: 25, superpos: 16, threshold: 500, minInput: 20, maxRate: 4000 };
 
   // resample all channels onto a uniform grid (like PID-Analyzer equalize)
   function equalize(log, t0, t1) {
@@ -242,7 +242,8 @@
     const medDt = span / (i1 - i0);
     const dt = Math.max(medDt, 1 / CFG.maxRate);
     const n = Math.floor(span / dt);
-    const out = { dt, n, gyro: [], input: [], bad: new Uint8Array(n) };
+    const out = { dt, n, gyro: [], input: [], bad: new Uint8Array(n), ground: new Uint8Array(n) };
+    const thr = log.throttle, hasThr = thr && thr.some((v) => v > 0);
     for (let a = 0; a < 3; a++) { out.gyro.push(new Float64Array(n)); out.input.push(new Float64Array(n)); }
     const terms = !!(log.pterm && log.fterm);
     if (terms) { out.pterm = [0, 1, 2].map(() => new Float64Array(n)); out.fterm = [0, 1, 2].map(() => new Float64Array(n)); }
@@ -252,6 +253,7 @@
       const tt = t[i0] + i * dt * 1e6;
       while (j < i1 - 1 && t[j + 1] < tt) j++;
       if (t[j + 1] - t[j] > gapThr) out.bad[i] = 1; // interpolated across missing frames
+      if (hasThr && thr[j] < CFG.groundThr) out.ground[i] = 1; // armed on the ground: stick moves don't move the craft
       const f = (tt - t[j]) / ((t[j + 1] - t[j]) || 1);
       for (let a = 0; a < 3; a++) {
         out.gyro[a][i] = log.gyro[a][j] + (log.gyro[a][j + 1] - log.gyro[a][j]) * f;
@@ -279,7 +281,7 @@
     return inv;
   }
 
-  function axisResponse(inp, out, dt, bad) {
+  function axisResponse(inp, out, dt, bad, ground) {
     const flen = Math.floor(CFG.framelen / dt);
     const rlen = Math.floor(CFG.resplen / dt);
     const shift = Math.floor(flen / CFG.superpos);
@@ -295,12 +297,15 @@
     // prefix count of gap samples so each window can be checked in O(1)
     const badSum = new Uint32Array(inp.length + 1);
     if (bad) for (let i = 0; i < inp.length; i++) badSum[i + 1] = badSum[i] + bad[i];
+    const gSum = new Uint32Array(inp.length + 1);
+    if (ground) for (let i = 0; i < inp.length; i++) gSum[i + 1] = gSum[i] + ground[i];
     let gapWin = 0;
     const hr = new Float64Array(N), hi = new Float64Array(N), gr = new Float64Array(N), gi = new Float64Array(N);
     for (let w = 0; w < wins; w++) {
       const o = w * shift;
       if (o + flen > inp.length) break;
       if (badSum[o + flen] - badSum[o] > 0) { maxIn.push(0); responses.push(null); gapWin++; continue; }
+      if (gSum[o + flen] - gSum[o] > flen / 2) { maxIn.push(0); responses.push(null); continue; } // mostly on the ground
       hr.fill(0); hi.fill(0); gr.fill(0); gi.fill(0);
       let mx = 0;
       for (let i = 0; i < flen; i++) {
@@ -397,7 +402,7 @@
     const axes = [];
     let gapWin = 0;
     for (let a = 0; a < 3; a++) {
-      const { responses, maxIn, rlen, dt, gapWin: gw } = axisResponse(eq.input[a], eq.gyro[a], eq.dt, eq.bad);
+      const { responses, maxIn, rlen, dt, gapWin: gw } = axisResponse(eq.input[a], eq.gyro[a], eq.dt, eq.bad, eq.ground);
       gapWin = gw;
       // quality gate (PIDtoolbox style): keep windows whose response settles near 1
       const s0 = Math.floor(0.2 / dt);
@@ -432,7 +437,7 @@
         dt, windows: low ? low.n : 0, total: maxIn.length,
         m: low ? metrics(low.mean, dt) : null,
         mHigh: high ? metrics(high.mean, dt) : null,
-        ff: log.header.setpointSource === "setpoint" ? ffAxis(eq.input[a], eq.gyro[a], eq.dt, eq.bad, eq.pterm && eq.pterm[a], eq.fterm && eq.fterm[a]) : { verdict: "noSetpoint" },
+        ff: log.header.setpointSource === "setpoint" ? ffAxis(eq.input[a], eq.gyro[a], eq.dt, eq.bad, eq.pterm && eq.pterm[a], eq.fterm && eq.fterm[a], eq.ground) : { verdict: "noSetpoint" },
       });
     }
     return { axes, dt: eq.dt, rate: Math.round(1 / eq.dt), gapWin };
@@ -441,7 +446,7 @@
   // ---------- feedforward check ----------
   // Looks only at fast stick moves. Lag = how far the gyro trails the setpoint (best time shift).
   // Overshoot = how far the gyro goes past the setpoint right after a fast move reaches its new rate.
-  const FF = { minSlope: 3000, minRate: 30, minPlateau: 200, maxLagMs: 40, minLagMs: -10, lagLow: 3, lagHigh: 12, over: 12, minEvents: 5, minFastS: 0.25, minTrack: 0.4, ffDom: 0.5, pDom: 0.3 };
+  const FF = { minSlope: 3000, minRate: 100, minPlateau: 200, maxLagMs: 40, minLagMs: -10, lagLow: 3, lagHigh: 12, over: 12, minEvents: 5, minFastS: 0.25, minTrack: 0.4, ffDom: 0.5, pDom: 0.3 };
   // share of the push that comes from FF, measured only on fast stick moves (FF scales with stick speed,
   // so slow drifts and hover would drown it in P and give a misleadingly low number)
   function shareOnly(fast, n, pt, ft) {
@@ -452,7 +457,7 @@
   }
 
 
-  function ffAxis(sp, gy, dt, bad, pt, ft) {
+  function ffAxis(sp, gy, dt, bad, pt, ft, ground) {
     const n = sp.length, ms = (x) => Math.max(1, Math.round(x / 1000 / dt));
     const k = ms(5), lagMin = -ms(-FF.minLagMs), lagMax = ms(FF.maxLagMs);
     const ds = new Float64Array(n);
@@ -464,6 +469,7 @@
     const fast = new Uint8Array(n);
     let nFast = 0;
     for (let i = k; i < n - k; i++) {
+      if (ground && ground[i]) continue;
       if (Math.abs(ds[i]) > FF.minSlope && Math.abs(sp[i]) > FF.minRate && clean(i + lagMin, i + lagMax)) { fast[i] = 1; nFast++; }
     }
     if (nFast * dt < FF.minFastS) return { verdict: "none", fastS: +(nFast * dt).toFixed(2), events: 0, share: null };
