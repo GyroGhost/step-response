@@ -98,6 +98,10 @@ th, td { padding: 8px 12px; white-space: nowrap; border-bottom: 1px solid var(--
 th { font: 600 11px var(--f-display); letter-spacing: .1em; text-transform: uppercase; color: var(--muted); background: var(--panel-2); }
 th, td { text-align: end; }
 th:first-child, td:first-child { text-align: start; }
+/* td has unicode-bidi: plaintext, so a cell holding only Latin digits resolves to LTR and "end" flips
+   to the right edge while Arabic headers stay on the left. Pin the sides physically in RTL. */
+[dir="rtl"] th, [dir="rtl"] td { text-align: left; }
+[dir="rtl"] th:first-child, [dir="rtl"] td:first-child { text-align: right; }
 tr:last-child td { border-bottom: 0; }
 td.axis { font: 700 12px var(--f-display); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
 td .dot { display: inline-block; width: 9px; height: 9px; border-radius: 2px; margin-right: 7px; vertical-align: 0; }
@@ -105,6 +109,7 @@ td .dot { display: inline-block; width: 9px; height: 9px; border-radius: 2px; ma
 .chip.good { color: var(--good); } .chip.warn { color: var(--warn); } .chip.bad { color: var(--bad); }
 td.diff { color: var(--accent); font-weight: 500; }
 h3 { font: 700 14px var(--f-display); letter-spacing: .1em; text-transform: uppercase; margin: 0 0 8px; }
+.note em { font-style: normal; font-weight: 600; color: var(--accent); }
 .note { color: var(--muted); font-size: 13px; max-width: 72ch; margin: 6px 0 0; }
 .howto { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; }
 .howto div { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; }
@@ -176,7 +181,7 @@ footer a { color: var(--fg); }
         <div>
           <h3>Feedforward</h3>
           <div class="tbl-wrap"><table id="fft"></table></div>
-          <p class="note" data-i18n="ffN"></p>
+          <p class="note" data-i18n-html="ffN"></p>
         </div>
         <div>
           <h3 data-i18n="tuneH"></h3>
@@ -269,7 +274,7 @@ self.onmessage = (e) => {
       axisLog: "Axis / log", setting: "Setting", read: "Read",
       good: "Good", over: "Overshoot", highOver: "High overshoot", soft: "Soft",
       srcSet: "setpoint", srcRec: "rebuilt from gyro + P-term",
-      ffN: "Only fast stick moves are used. Lag is how far the gyro trails your stick (lower is sharper, below 0 means the gyro is ahead). Overshoot is how far the gyro goes past the new rate when a fast move ends. Too low FF: high lag, raise FF. Too high FF: lag near 0 or below with overshoot, lower FF. Overshoot with normal lag is usually P or D, not FF. Compare logs before and after a change.",
+      ffN: "Only fast stick moves are used. <em>Lag</em> is how far the gyro trails your stick (lower is sharper, below 0 means the gyro is ahead). <em>Overshoot</em> is how far the gyro goes past the new rate when a fast move ends. Too low FF: high lag, raise FF. Too high FF: lag near 0 or below with overshoot, lower FF. <em>Overshoot</em> with normal lag is usually P or D, not FF. Compare logs before and after a change.",
       ffMoves: "Moves", ff_good: "Good", ff_low: "FF low", ff_high: "FF high", ff_over: "Overshoot (P/D?)",
       ffNone: "not enough fast stick moves", ffFew: "few moves, read with care", ffNoSet: "needs Betaflight 4.x log (real setpoint)", ffNoTrack: "gyro doesn't follow the stick (bench log, props off, or wrong axis?)", ffUnclear: "lag couldn't be measured, read with care", ffNoData: "–",
       hOk: "Log looks clean", hWarn: "Logging artefacts", hBad: "Log not reliable", hRow: "Log health",
@@ -309,7 +314,7 @@ self.onmessage = (e) => {
       axisLog: "المحور / السجل", setting: "الإعداد", read: "التقييم",
       good: "ممتاز", over: "Overshoot", highOver: "Overshoot عالي", soft: "بطيء",
       srcSet: "setpoint", srcRec: "محسوب من gyro و P-term",
-      ffN: "التحليل على الحركات السريعة بس. Lag يعني كم الجايرو متأخر عن عصا التحكم، كل ما قل كان أحسن، وإذا طلع بالسالب يعني الجايرو سابق العصا. Overshoot يعني كم الجايرو يتعدى السرعة الجديدة لما تخلص الحركة. إذا الـ FF قليل يطلع Lag عالي، فارفعه. وإذا زايد يطلع Lag قريب من الصفر أو بالسالب مع Overshoot، فنزّله. وإذا فيه Overshoot والـ Lag طبيعي، فغالباً السبب P أو D مو FF. قارن السجلات قبل وبعد التعديل.",
+      ffN: "التحليل على الحركات السريعة بس. <em>Lag</em> يعني كم الجايرو متأخر عن عصا التحكم، كل ما قل كان أحسن، وإذا طلع بالسالب يعني الجايرو سابق العصا. <em>Overshoot</em> يعني كم الجايرو يتعدى السرعة الجديدة لما تخلص الحركة. إذا الـ FF قليل يطلع <em>Lag</em> عالي، فارفعه. وإذا زايد يطلع <em>Lag</em> قريب من الصفر أو بالسالب مع <em>Overshoot</em>، فنزّله. وإذا فيه <em>Overshoot</em> والـ <em>Lag</em> طبيعي، فغالباً السبب P أو D مو FF. قارن السجلات قبل وبعد التعديل.",
       ffMoves: "الحركات", ff_good: "ممتاز", ff_low: "FF قليل", ff_high: "FF زايد", ff_over: "Overshoot (P/D؟)",
       ffNone: "ما في حركات سريعة كفاية", ffFew: "حركات قليلة، لا تعتمد عليه وايد", ffNoSet: "يحتاج سجل من Betaflight 4 وفوق", ffNoTrack: "الجايرو ما يتبع عصا التحكم. السجل على الأرض أو بدون مراوح؟", ffUnclear: "ما قدرت أقيس الـ Lag، لا تعتمد عليه", ffNoData: "–",
       hOk: "السجل سليم", hWarn: "فيه أخطاء تسجيل", hBad: "السجل مو موثوق", hRow: "سلامة السجل",
