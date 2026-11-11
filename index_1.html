@@ -620,7 +620,7 @@ self.window = self;
   // ---------- feedforward check ----------
   // Looks only at fast stick moves. Lag = how far the gyro trails the setpoint (best time shift).
   // Overshoot = how far the gyro goes past the setpoint right after a fast move reaches its new rate.
-  const FF = { minSlope: 3000, minRate: 30, minPlateau: 200, maxLagMs: 40, minLagMs: -10, lagLow: 3, lagHigh: 12, over: 12, minEvents: 5, minFastS: 0.25 };
+  const FF = { minSlope: 3000, minRate: 30, minPlateau: 200, maxLagMs: 40, minLagMs: -10, lagLow: 3, lagHigh: 12, over: 12, minEvents: 5, minFastS: 0.25, minTrack: 0.4 };
 
   function ffAxis(sp, gy, dt, bad) {
     const n = sp.length, ms = (x) => Math.max(1, Math.round(x / 1000 / dt));
@@ -644,6 +644,11 @@ self.window = self;
       for (let i = 0; i < n; i++) if (fast[i]) { const d = gy[i + L] - sp[i]; e += d * d; }
       if (e < best) { best = e; lag = L; }
     }
+    // does the gyro follow the stick at all? (least-squares gain gyro/setpoint over fast moves)
+    let gs = 0, ss = 0;
+    for (let i = 0; i < n; i++) if (fast[i]) { gs += gy[i + lag] * sp[i]; ss += sp[i] * sp[i]; }
+    const track = ss ? gs / ss : 0;
+    const lagPinned = lag === lagMin || lag === lagMax; // best shift sits on the search limit: no real match
     // overshoot after each fast move away from zero that settles on a new rate
     const overs = [];
     const hold = ms(20), look = ms(60);
@@ -655,18 +660,21 @@ self.window = self;
       if (Math.abs(P) < FF.minPlateau || Math.abs(P - sp[e]) > 0.1 * Math.abs(P) || !clean(e, e + look)) continue;
       let mx = -Infinity;
       for (let j = e; j <= Math.min(n - 1, e + look); j++) mx = Math.max(mx, Math.sign(P) * gy[j]);
-      overs.push((mx / Math.abs(P) - 1) * 100);
+      const o = (mx / Math.abs(P) - 1) * 100;
+      if (o > -50) overs.push(o); // gyro never got near the new rate: not an overshoot sample
     }
     overs.sort((a, b) => a - b);
     const over = overs.length ? overs[overs.length >> 1] : null;
     const lagMs = +(lag * dt * 1000).toFixed(1);
     let verdict;
-    if (overs.length < FF.minEvents) verdict = lagMs > FF.lagHigh ? "low" : "few";
+    if (track < FF.minTrack) verdict = "noTrack";
+    else if (lagPinned) verdict = "unclear";
+    else if (overs.length < FF.minEvents) verdict = lagMs > FF.lagHigh ? "low" : "few";
     else if (lagMs < 0 || (over > FF.over && lagMs <= FF.lagLow)) verdict = "high"; // gyro ahead of the stick
     else if (lagMs > FF.lagHigh) verdict = "low";
     else if (over > FF.over) verdict = "over";
     else verdict = "good";
-    return { verdict, lagMs, overshoot: over == null ? null : +over.toFixed(1), events: overs.length, fastS: +(nFast * dt).toFixed(2) };
+    return { verdict, lagMs, track: +track.toFixed(2), overshoot: over == null ? null : +over.toFixed(1), events: overs.length, fastS: +(nFast * dt).toFixed(2) };
   }
 
   root.GGStep = { loadLogs, analyze, CFG, HEALTH, FF, ffAxis };
@@ -743,7 +751,7 @@ self.onmessage = (e) => {
       srcSet: "setpoint", srcRec: "rebuilt from gyro + P-term",
       ffN: "Only fast stick moves are used. Lag is how far the gyro trails your stick (lower is sharper, below 0 means the gyro is ahead). Overshoot is how far the gyro goes past the new rate when a fast move ends. Too low FF: high lag, raise FF. Too high FF: lag near 0 or below with overshoot, lower FF. Overshoot with normal lag is usually P or D, not FF. Compare logs before and after a change.",
       ffMoves: "Moves", ff_good: "Good", ff_low: "FF low", ff_high: "FF high", ff_over: "Overshoot (P/D?)",
-      ffNone: "not enough fast stick moves", ffFew: "few moves, read with care", ffNoSet: "needs Betaflight 4.x log (real setpoint)", ffNoData: "–",
+      ffNone: "not enough fast stick moves", ffFew: "few moves, read with care", ffNoSet: "needs Betaflight 4.x log (real setpoint)", ffNoTrack: "gyro doesn't follow the stick (bench log, props off, or wrong axis?)", ffUnclear: "lag couldn't be measured, read with care", ffNoData: "–",
       hOk: "Log looks clean", hWarn: "Logging artefacts", hBad: "Log not reliable", hRow: "Log health",
       hGaps: (n, p, ms) => n + " gaps · " + p + "% of the flight missing · longest " + ms + " ms",
       hCorrupt: (n, p) => n + " corrupt frames (" + p + "%)",
@@ -783,7 +791,7 @@ self.onmessage = (e) => {
       srcSet: "setpoint", srcRec: "محسوب من gyro و P-term",
       ffN: "التحليل على الحركات السريعة بس. Lag يعني كم الجايرو متأخر عن عصا التحكم، كل ما قل كان أحسن، وإذا طلع بالسالب يعني الجايرو سابق العصا. Overshoot يعني كم الجايرو يتعدى السرعة الجديدة لما تخلص الحركة. إذا الـ FF قليل يطلع Lag عالي، فارفعه. وإذا زايد يطلع Lag قريب من الصفر أو بالسالب مع Overshoot، فنزّله. وإذا فيه Overshoot والـ Lag طبيعي، فغالباً السبب P أو D مو FF. قارن السجلات قبل وبعد التعديل.",
       ffMoves: "الحركات", ff_good: "ممتاز", ff_low: "FF قليل", ff_high: "FF زايد", ff_over: "Overshoot (P/D؟)",
-      ffNone: "ما في حركات سريعة كفاية", ffFew: "حركات قليلة، لا تعتمد عليه وايد", ffNoSet: "يحتاج سجل من Betaflight 4 وفوق", ffNoData: "–",
+      ffNone: "ما في حركات سريعة كفاية", ffFew: "حركات قليلة، لا تعتمد عليه وايد", ffNoSet: "يحتاج سجل من Betaflight 4 وفوق", ffNoTrack: "الجايرو ما يتبع عصا التحكم. السجل على الأرض أو بدون مراوح؟", ffUnclear: "ما قدرت أقيس الـ Lag، لا تعتمد عليه", ffNoData: "–",
       hOk: "السجل سليم", hWarn: "فيه أخطاء تسجيل", hBad: "السجل مو موثوق", hRow: "سلامة السجل",
       hGaps: (n, p, ms) => "‎" + n + " gaps · " + p + "% missing · max " + ms + " ms",
       hCorrupt: (n, p) => "‎" + n + " corrupt frames (" + p + "%)",
@@ -1082,8 +1090,9 @@ self.onmessage = (e) => {
         if (!f) h += '<td colspan="4">' + t("ffNoData") + "</td>";
         else if (f.verdict === "noSetpoint") h += '<td colspan="4">' + t("ffNoSet") + "</td>";
         else if (f.verdict === "none") h += '<td colspan="4">' + t("ffNone") + "</td>";
+        else if (f.verdict === "noTrack") h += '<td colspan="4">' + t("ffNoTrack") + "</td>";
         else h += "<td>" + fmt(f.lagMs, 1) + " ms</td><td>" + (f.overshoot == null ? "–" : fmt(f.overshoot, 0) + " %") + "</td><td>" + f.events + "</td><td>" +
-          (f.verdict === "few" ? t("ffFew") : ffChip(f.verdict)) + "</td>";
+          (f.verdict === "few" ? t("ffFew") : f.verdict === "unclear" ? t("ffUnclear") : ffChip(f.verdict)) + "</td>";
         h += "</tr>";
       });
     }
