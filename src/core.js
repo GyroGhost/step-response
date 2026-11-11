@@ -441,13 +441,16 @@
   // ---------- feedforward check ----------
   // Looks only at fast stick moves. Lag = how far the gyro trails the setpoint (best time shift).
   // Overshoot = how far the gyro goes past the setpoint right after a fast move reaches its new rate.
-  const FF = { minSlope: 3000, minRate: 30, minPlateau: 200, maxLagMs: 40, minLagMs: -10, lagLow: 3, lagHigh: 12, over: 12, minEvents: 5, minFastS: 0.25, minTrack: 0.4, moveSlope: 500, ffDom: 0.5, pDom: 0.3 };
-  function shareOnly(sp, ds, k, n, dt, bad, pt, ft) {
+  const FF = { minSlope: 3000, minRate: 30, minPlateau: 200, maxLagMs: 40, minLagMs: -10, lagLow: 3, lagHigh: 12, over: 12, minEvents: 5, minFastS: 0.25, minTrack: 0.4, ffDom: 0.5, pDom: 0.3 };
+  // share of the push that comes from FF, measured only on fast stick moves (FF scales with stick speed,
+  // so slow drifts and hover would drown it in P and give a misleadingly low number)
+  function shareOnly(fast, n, pt, ft) {
     if (!pt || !ft) return null;
-    let sf = 0, sp2 = 0, m = 0;
-    for (let i = k; i < n - k; i++) { if (Math.abs(ds[i]) < FF.moveSlope || (bad && bad[i])) continue; sf += Math.abs(ft[i]); sp2 += Math.abs(pt[i]); m++; }
-    return m * dt >= FF.minFastS && sf + sp2 > 0 ? +(sf / (sf + sp2)).toFixed(2) : null;
+    let sf = 0, sp2 = 0;
+    for (let i = 0; i < n; i++) if (fast[i]) { sf += Math.abs(ft[i]); sp2 += Math.abs(pt[i]); }
+    return sf + sp2 > 0 ? +(sf / (sf + sp2)).toFixed(2) : null;
   }
+
 
   function ffAxis(sp, gy, dt, bad, pt, ft) {
     const n = sp.length, ms = (x) => Math.max(1, Math.round(x / 1000 / dt));
@@ -463,7 +466,7 @@
     for (let i = k; i < n - k; i++) {
       if (Math.abs(ds[i]) > FF.minSlope && Math.abs(sp[i]) > FF.minRate && clean(i + lagMin, i + lagMax)) { fast[i] = 1; nFast++; }
     }
-    if (nFast * dt < FF.minFastS) return { verdict: "none", fastS: +(nFast * dt).toFixed(2), events: 0, share: shareOnly(sp, ds, k, n, dt, bad, pt, ft) };
+    if (nFast * dt < FF.minFastS) return { verdict: "none", fastS: +(nFast * dt).toFixed(2), events: 0, share: null };
     // lag: time shift that best lines the gyro up with the setpoint during fast moves
     let best = Infinity, lag = 0;
     for (let L = lagMin; L <= lagMax; L++) {
@@ -476,7 +479,7 @@
     for (let i = 0; i < n; i++) if (fast[i]) { gs += gy[i + lag] * sp[i]; ss += sp[i] * sp[i]; }
     const track = ss ? gs / ss : 0;
     // who pushes during stick moves: FF share of |P| + |FF| while the stick is moving (any speed)
-    const share = shareOnly(sp, ds, k, n, dt, bad, pt, ft);
+    const share = shareOnly(fast, n, pt, ft);
     const lagPinned = lag === lagMin || lag === lagMax; // best shift sits on the search limit: no real match
     // overshoot after each fast move away from zero that settles on a new rate
     const overs = [];
