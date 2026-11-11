@@ -106,6 +106,7 @@ tr:last-child td { border-bottom: 0; }
 td.axis { font: 700 12px var(--f-display); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
 td .dot { display: inline-block; width: 9px; height: 9px; border-radius: 2px; margin-right: 7px; vertical-align: 0; }
 .chip { font: 600 11px var(--f-body); padding: 2px 8px; border-radius: 99px; border: 1px solid currentColor; }
+.cause { font: 600 11px var(--f-mono); color: var(--accent); margin-inline-start: 4px; }
 .chip.good { color: var(--good); } .chip.warn { color: var(--warn); } .chip.bad { color: var(--bad); }
 td.diff { color: var(--accent); font-weight: 500; }
 h3 { font: 700 14px var(--f-display); letter-spacing: .1em; text-transform: uppercase; margin: 0 0 8px; }
@@ -274,8 +275,8 @@ self.onmessage = (e) => {
       axisLog: "Axis / log", setting: "Setting", read: "Read",
       good: "Good", over: "Overshoot", highOver: "High overshoot", soft: "Soft",
       srcSet: "setpoint", srcRec: "rebuilt from gyro + P-term",
-      ffN: "Only fast stick moves are used. <em>Lag</em> is how far the gyro trails your stick (lower is sharper, below 0 means the gyro is ahead). <em>Overshoot</em> is how far the gyro goes past the new rate when a fast move ends. Too low FF: high lag, raise FF. Too high FF: lag near 0 or below with overshoot, lower FF. <em>Overshoot</em> with normal lag is usually P or D, not FF. Compare logs before and after a change.",
-      ffMoves: "Moves", ff_good: "Good", ff_low: "FF low", ff_high: "FF high", ff_over: "Overshoot (P/D?)",
+      ffN: "Only fast stick moves are used. <em>Lag</em> is how far the gyro trails your stick (lower is sharper, below 0 means the gyro is ahead). <em>Overshoot</em> is how far the gyro goes past the new rate when a fast move ends. Too low FF: high lag, raise FF. Too high FF: lag near 0 or below with overshoot, lower FF. <em>Overshoot</em> with normal lag is usually P or D, not FF. Compare logs before and after a change. <em>FF share</em> is how much of the push during stick moves comes from FF versus P: above 50% the <em>Overshoot</em> is likely from FF, below 30% likely from P or D.",
+      ffMoves: "Moves", ff_good: "Good", ff_low: "FF low", ff_high: "FF high", ff_over: "Overshoot (P/D?)", ff_overFF: "Overshoot from FF", ff_overMix: "Overshoot (FF + P)", ffShare: "FF share", cause_ff: "FF", cause_pd: "P/D", cause_mix: "FF+P",
       ffNone: "not enough fast stick moves", ffFew: "few moves, read with care", ffNoSet: "needs Betaflight 4.x log (real setpoint)", ffNoTrack: "gyro doesn't follow the stick (bench log, props off, or wrong axis?)", ffUnclear: "lag couldn't be measured, read with care", ffNoData: "–",
       hOk: "Log looks clean", hWarn: "Logging artefacts", hBad: "Log not reliable", hRow: "Log health",
       hGaps: (n, p, ms) => n + " gaps · " + p + "% of the flight missing · longest " + ms + " ms",
@@ -314,8 +315,8 @@ self.onmessage = (e) => {
       axisLog: "المحور / السجل", setting: "الإعداد", read: "التقييم",
       good: "ممتاز", over: "Overshoot", highOver: "Overshoot عالي", soft: "بطيء",
       srcSet: "setpoint", srcRec: "محسوب من gyro و P-term",
-      ffN: "التحليل على الحركات السريعة بس. <em>Lag</em> يعني كم الجايرو متأخر عن عصا التحكم، كل ما قل كان أحسن، وإذا طلع بالسالب يعني الجايرو سابق العصا. <em>Overshoot</em> يعني كم الجايرو يتعدى السرعة الجديدة لما تخلص الحركة. إذا الـ FF قليل يطلع <em>Lag</em> عالي، فارفعه. وإذا زايد يطلع <em>Lag</em> قريب من الصفر أو بالسالب مع <em>Overshoot</em>، فنزّله. وإذا فيه <em>Overshoot</em> والـ <em>Lag</em> طبيعي، فغالباً السبب P أو D مو FF. قارن السجلات قبل وبعد التعديل.",
-      ffMoves: "الحركات", ff_good: "ممتاز", ff_low: "FF قليل", ff_high: "FF زايد", ff_over: "Overshoot (P/D؟)",
+      ffN: "التحليل على الحركات السريعة بس. <em>Lag</em> يعني كم الجايرو متأخر عن عصا التحكم، كل ما قل كان أحسن، وإذا طلع بالسالب يعني الجايرو سابق العصا. <em>Overshoot</em> يعني كم الجايرو يتعدى السرعة الجديدة لما تخلص الحركة. إذا الـ FF قليل يطلع <em>Lag</em> عالي، فارفعه. وإذا زايد يطلع <em>Lag</em> قريب من الصفر أو بالسالب مع <em>Overshoot</em>، فنزّله. وإذا فيه <em>Overshoot</em> والـ <em>Lag</em> طبيعي، فغالباً السبب P أو D مو FF. قارن السجلات قبل وبعد التعديل. <em>نسبة الـ FF</em> يعني كم من دفعة المحركات وقت تحريك العصا جاية من الـ FF مقارنة بالـ P. فوق 50% يعني الـ <em>Overshoot</em> غالباً من الـ FF، وتحت 30% غالباً من P أو D.",
+      ffMoves: "الحركات", ff_good: "ممتاز", ff_low: "FF قليل", ff_high: "FF زايد", ff_over: "Overshoot (P/D؟)", ff_overFF: "Overshoot من الـ FF", ff_overMix: "Overshoot من FF و P", ffShare: "نسبة الـ FF", cause_ff: "FF", cause_pd: "P/D", cause_mix: "FF+P",
       ffNone: "ما في حركات سريعة كفاية", ffFew: "حركات قليلة، لا تعتمد عليه وايد", ffNoSet: "يحتاج سجل من Betaflight 4 وفوق", ffNoTrack: "الجايرو ما يتبع عصا التحكم. السجل على الأرض أو بدون مراوح؟", ffUnclear: "ما قدرت أقيس الـ Lag، لا تعتمد عليه", ffNoData: "–",
       hOk: "السجل سليم", hWarn: "فيه أخطاء تسجيل", hBad: "السجل مو موثوق", hRow: "سلامة السجل",
       hGaps: (n, p, ms) => "‎" + n + " gaps · " + p + "% missing · max " + ms + " ms",
@@ -555,6 +556,12 @@ self.onmessage = (e) => {
     if (peak >= 0.98) return '<span class="chip good">' + t("good") + "</span>";
     return '<span class="chip warn">' + t("soft") + "</span>";
   }
+  // likely source of an overshoot, from how much of the push comes from FF (needs axisF in the log)
+  function cause(peak, ff) {
+    if (peak == null || peak <= 1.15 || !ff || ff.share == null) return "";
+    const c = ff.share >= 0.5 ? "cause_ff" : ff.share <= 0.3 ? "cause_pd" : "cause_mix";
+    return ' <span class="cause">' + t(c) + "</span>";
+  }
   function renderTables() {
     const vis = state.logs.filter((l) => l.visible);
     const mt = $("mt");
@@ -567,7 +574,7 @@ self.onmessage = (e) => {
           '<span class="dot" style="background:' + l.color + '"></span>' + esc(short(l)) + "</td>" +
           (m ? "<td>" + fmt(m.peak, 2) + "</td><td>" + fmt(m.overshoot, 0) + " %</td><td>" + fmt(m.delay, 1) + " ms</td><td>" + fmt(m.rise, 1) + " ms</td><td>" + fmt(m.settling, 0) + " ms</td><td>" + fmt(m.steady, 2) + "</td>"
              : '<td colspan="6">' + t("noInput") + "</td>") +
-          "<td>" + nOf(l, a) + "</td><td>" + (m ? verdict(m.peak) : "") + "</td></tr>";
+          "<td>" + nOf(l, a) + "</td><td>" + (m ? verdict(m.peak) + cause(m.peak, ax.ff) : "") + "</td></tr>";
       });
     }
     mt.innerHTML = h;
@@ -602,21 +609,21 @@ self.onmessage = (e) => {
     $("pt").innerHTML = p;
   }
   function ffChip(v) {
-    const cls = { good: "good", low: "warn", high: "bad", over: "warn" }[v];
+    const cls = { good: "good", low: "warn", high: "bad", over: "warn", overFF: "warn", overMix: "warn" }[v];
     return cls ? '<span class="chip ' + cls + '">' + t("ff_" + v) + "</span>" : "";
   }
   function renderFF(vis) {
-    let h = "<tr><th>" + t("axisLog") + "</th><th>Lag</th><th>Overshoot</th><th>" + t("ffMoves") + "</th><th>" + t("read") + "</th></tr>";
+    let h = "<tr><th>" + t("axisLog") + "</th><th>Lag</th><th>Overshoot</th><th>" + t("ffShare") + "</th><th>" + t("ffMoves") + "</th><th>" + t("read") + "</th></tr>";
     for (let a = 0; a < 3; a++) {
       vis.forEach((l, i) => {
         const f = l.axes[a].ff;
         h += '<tr><td><span style="font:700 12px var(--f-display);letter-spacing:.08em;text-transform:uppercase;color:var(--muted);display:inline-block;width:52px">' + (i === 0 ? AX[a] : "") + "</span>" +
           '<span class="dot" style="background:' + l.color + '"></span>' + esc(short(l)) + "</td>";
-        if (!f) h += '<td colspan="4">' + t("ffNoData") + "</td>";
-        else if (f.verdict === "noSetpoint") h += '<td colspan="4">' + t("ffNoSet") + "</td>";
-        else if (f.verdict === "none") h += '<td colspan="4">' + t("ffNone") + "</td>";
-        else if (f.verdict === "noTrack") h += '<td colspan="4">' + t("ffNoTrack") + "</td>";
-        else h += "<td>" + fmt(f.lagMs, 1) + " ms</td><td>" + (f.overshoot == null ? "–" : fmt(f.overshoot, 0) + " %") + "</td><td>" + f.events + "</td><td>" +
+        if (!f) h += '<td colspan="5">' + t("ffNoData") + "</td>";
+        else if (f.verdict === "noSetpoint") h += '<td colspan="5">' + t("ffNoSet") + "</td>";
+        else if (f.verdict === "none") h += '<td colspan="5">' + t("ffNone") + "</td>";
+        else if (f.verdict === "noTrack") h += '<td colspan="5">' + t("ffNoTrack") + "</td>";
+        else h += "<td>" + fmt(f.lagMs, 1) + " ms</td><td>" + (f.overshoot == null ? "–" : fmt(f.overshoot, 0) + " %") + "</td><td>" + (f.share == null ? "–" : Math.round(f.share * 100) + " %") + "</td><td>" + f.events + "</td><td>" +
           (f.verdict === "few" ? t("ffFew") : f.verdict === "unclear" ? t("ffUnclear") : ffChip(f.verdict)) + "</td>";
         h += "</tr>";
       });
