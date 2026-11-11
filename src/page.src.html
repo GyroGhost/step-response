@@ -52,6 +52,11 @@ header.top { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; pad
 .status.err { color: var(--bad); }
 .label { font: 600 11px var(--f-display); text-transform: uppercase; letter-spacing: .12em; color: var(--muted); }
 
+.rack-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.clear { background: none; border: 1px solid var(--line); color: var(--muted); border-radius: 6px; padding: 4px 10px;
+  font: 600 12px var(--f-body); cursor: pointer; }
+.clear:hover { color: var(--accent); border-color: var(--accent); }
+.clear:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .logs { display: flex; flex-direction: column; gap: 8px; }
 .log { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; display: grid;
   grid-template-columns: auto minmax(0,1fr) auto; gap: 4px 10px; align-items: center; }
@@ -91,7 +96,13 @@ header.top { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; pad
 .readout .r .none { color: var(--muted); }
 .scope canvas { direction: ltr; width: 100%; height: 340px; display: block; margin-top: 6px; touch-action: none; }
 
-section.tables { margin-top: 22px; display: grid; gap: 18px; }
+section.tables { margin-top: 22px; display: grid; grid-template-columns: minmax(0,1fr); gap: 18px; }
+/* grid items default to min-width:auto and stretch to the widest table, which pushed the page wide and,
+   in RTL, cut the far side off with no way to scroll to it. Keep them at the column width so the
+   table wrapper scrolls instead. */
+section.tables > div { min-width: 0; }
+#pt td { white-space: normal; overflow-wrap: anywhere; min-width: 9ch; }
+#pt td:first-child { white-space: nowrap; }
 .tbl-wrap { overflow-x: auto; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; }
 table { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums; }
 th, td { padding: 8px 12px; white-space: nowrap; border-bottom: 1px solid var(--grid); font: 13px var(--f-mono); }
@@ -148,7 +159,7 @@ footer a { color: var(--fg); }
         <small data-i18n="dropS"></small>
       </div>
       <div class="status" id="status" aria-live="polite"></div>
-      <div class="label" data-i18n="loaded"></div>
+      <div class="rack-head"><div class="label" data-i18n="loaded"></div><button class="clear" id="clearBtn" type="button" data-i18n="clear" hidden></button></div>
       <div class="example-banner" id="exampleBanner" data-i18n-html="example"></div>
       <div class="logs" id="logs"></div>
     </aside>
@@ -249,7 +260,7 @@ self.onmessage = (e) => {
   const I18N = {
     en: {
       tagline: "Free PID step response & log comparison for Betaflight blackbox logs. Runs in your browser — logs never leave your device.",
-      open: "Open BBL logs", lang: "عربي",
+      open: "Open BBL logs", lang: "عربي", clear: "Clear all", cleared: "All logs cleared. Open new ones.",
       dropT: "Drop .BBL / .BFL files here", dropS: "Add several logs to overlay them — e.g. before and after a tune change.",
       loaded: "Loaded logs",
       example: "<b>Example loaded:</b> PID-Analyzer's public sample logs (stock tune vs good tune, Betaflight 3.1). Open your own logs to replace them.",
@@ -289,7 +300,7 @@ self.onmessage = (e) => {
     },
     ar: {
       tagline: "أداة مجانية تحلل سجلات الطيران من Blackbox حق Betaflight، وتطلع لك الـ Step Response وتقارن بين أكثر من سجل. تشتغل داخل المتصفح، وملفاتك ما تطلع من جهازك.",
-      open: "افتح ملفات BBL", lang: "English",
+      open: "افتح ملفات BBL", lang: "English", clear: "مسح الكل", cleared: "انمسحت كل السجلات، افتح سجلات جديدة.",
       dropT: "اسحب ملفات BBL أو BFL هني", dropS: "حط أكثر من سجل عشان تقارن بينهم، مثلاً قبل وبعد ما تعدل الـ PID.",
       loaded: "سجلات الطيران",
       example: "<b>هذا مثال:</b> سجلات عامة من PID-Analyzer، إعدادات أصلية مقابل إعدادات معدّلة على Betaflight 3.1. افتح سجلاتك وبيختفي المثال.",
@@ -394,6 +405,7 @@ self.onmessage = (e) => {
   const fmt = (v, d) => (v == null || !isFinite(v) ? "–" : v.toFixed(d));
   const pidStr = (p) => (p ? p.slice(0, 3).join("/") : "–");
   function renderRack() {
+    $("clearBtn").hidden = state.example || !state.logs.length;
     const box = $("logs");
     box.innerHTML = "";
     if (!state.logs.length) { box.innerHTML = '<div class="status">' + t("noLogs") + "</div>"; return; }
@@ -560,15 +572,16 @@ self.onmessage = (e) => {
     return '<span class="chip warn">' + t("soft") + "</span>";
   }
   // likely source of an overshoot, from how much of the push comes from FF (needs axisF in the log)
-  function cause(peak, ff) {
-    if (peak == null || peak <= 1.15 || !ff || ff.share == null) return "";
+  function cause(m, ff) {
+    const peak = 1 + m.overshoot / 100;
+    if (m.steady < 0.85 || m.steady > 1.15 || peak <= 1.15 || !ff || ff.share == null) return "";
     const c = ff.share >= 0.5 ? "cause_ff" : ff.share <= 0.3 ? "cause_pd" : "cause_mix";
     return ' <span class="cause">' + t(c) + "</span>";
   }
   function renderTables() {
     const vis = state.logs.filter((l) => l.visible);
     const mt = $("mt");
-    if (!vis.length) { mt.innerHTML = "<tr><td>" + t("noVisible") + "</td></tr>"; $("pt").innerHTML = mt.innerHTML; $("fft").innerHTML = mt.innerHTML; return; }
+    if (!vis.length) { mt.innerHTML = "<tr><td>" + t(state.logs.length ? "noVisible" : "noLogs") + "</td></tr>"; $("pt").innerHTML = mt.innerHTML; $("fft").innerHTML = mt.innerHTML; return; }
     let h = "<tr><th>" + t("axisLog") + "</th><th>Peak</th><th>Overshoot</th><th>Delay</th><th>Rise</th><th>Settling</th><th>Steady</th><th>N</th><th>" + t("read") + "</th></tr>";
     for (let a = 0; a < 3; a++) {
       vis.forEach((l, i) => {
@@ -577,7 +590,7 @@ self.onmessage = (e) => {
           '<span class="dot" style="background:' + l.color + '"></span>' + esc(short(l)) + "</td>" +
           (m ? "<td>" + fmt(m.peak, 2) + "</td><td>" + fmt(m.overshoot, 0) + " %</td><td>" + fmt(m.delay, 1) + " ms</td><td>" + fmt(m.rise, 1) + " ms</td><td>" + fmt(m.settling, 0) + " ms</td><td>" + fmt(m.steady, 2) + "</td>"
              : '<td colspan="6">' + t("noInput") + "</td>") +
-          "<td>" + nOf(l, a) + "</td><td>" + (m ? verdict(m) + cause(1 + m.overshoot / 100, ax.ff) : "") + "</td></tr>";
+          "<td>" + nOf(l, a) + "</td><td>" + (m ? verdict(m) + cause(m, ax.ff) : "") + "</td></tr>";
       });
     }
     mt.innerHTML = h;
@@ -651,6 +664,11 @@ self.onmessage = (e) => {
   });
   $("bandChk").onchange = (e) => { state.band = e.target.checked; drawAll(); };
   $("openBtn").onclick = () => $("file").click();
+  $("clearBtn").onclick = () => {
+    state.logs.forEach((l) => worker && worker.postMessage({ type: "drop", id: l.id }));
+    state.logs = []; colorIdx = 0; state.hover = null;
+    setStatus(t("cleared")); render();
+  };
   $("file").onchange = (e) => { addFiles(e.target.files); e.target.value = ""; };
   const drop = $("drop");
   drop.onclick = () => $("file").click();
