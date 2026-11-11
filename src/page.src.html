@@ -273,7 +273,7 @@ self.onmessage = (e) => {
       band: "Show spread (±sd)", lowData: "Dashed line = little stick input (N < 15), treat with care.", hidden: "Hidden: not enough stick input", windows: "windows", noCurve: "No curve to show", noHigh: "Not enough fast stick moves (>500°/s) in these logs",
       noInput: "not enough stick input", noVisible: "No visible logs.",
       axisLog: "Axis / log", setting: "Setting", read: "Read",
-      good: "Good", over: "Overshoot", highOver: "High overshoot", soft: "Soft",
+      good: "Good", over: "Overshoot", unsteady: "Unclear, few moves", highOver: "High overshoot", soft: "Soft",
       srcSet: "setpoint", srcRec: "rebuilt from gyro + P-term",
       ffN: "Only fast stick moves are used. <em>Lag</em> is how far the gyro trails your stick (lower is sharper, below 0 means the gyro is ahead). <em>Overshoot</em> is how far the gyro goes past the new rate when a fast move ends. Too low FF: high lag, raise FF. Too high FF: lag near 0 or below with overshoot, lower FF. <em>Overshoot</em> with normal lag is usually P or D, not FF. Compare logs before and after a change. <em>FF share</em> is how much of the push during stick moves comes from FF versus P: above 50% the <em>Overshoot</em> is likely from FF, below 30% likely from P or D.",
       ffMoves: "Moves", ff_good: "Good", ff_low: "FF low", ff_high: "FF high", ff_over: "Overshoot (P/D?)", ff_overFF: "Overshoot from FF", ff_overMix: "Overshoot (FF + P)", ffShare: "FF share", cause_ff: "FF", cause_pd: "P/D", cause_mix: "FF+P",
@@ -313,7 +313,7 @@ self.onmessage = (e) => {
       band: "إظهار التشتت (±sd)", lowData: "الخط المتقطع يعني إن حركة عصا التحكم قليلة (N أقل من 15)، فلا تعتمد عليه.", hidden: "مخفي: حركة عصا التحكم ما تكفي", windows: "مقطع", noCurve: "ما في منحنى", noHigh: "ما في حركات قوية كفاية (فوق 500°/s)",
       noInput: "حركة عصا التحكم ما تكفي", noVisible: "كل السجلات مخفية.",
       axisLog: "المحور / السجل", setting: "الإعداد", read: "التقييم",
-      good: "ممتاز", over: "Overshoot", highOver: "Overshoot عالي", soft: "بطيء",
+      good: "ممتاز", over: "Overshoot", unsteady: "غير واضح، حركات قليلة", highOver: "Overshoot عالي", soft: "بطيء",
       srcSet: "setpoint", srcRec: "محسوب من gyro و P-term",
       ffN: "التحليل على الحركات السريعة بس. <em>Lag</em> يعني كم الجايرو متأخر عن عصا التحكم، كل ما قل كان أحسن، وإذا طلع بالسالب يعني الجايرو سابق العصا. <em>Overshoot</em> يعني كم الجايرو يتعدى السرعة الجديدة لما تخلص الحركة. إذا الـ FF قليل يطلع <em>Lag</em> عالي، فارفعه. وإذا زايد يطلع <em>Lag</em> قريب من الصفر أو بالسالب مع <em>Overshoot</em>، فنزّله. وإذا فيه <em>Overshoot</em> والـ <em>Lag</em> طبيعي، فغالباً السبب P أو D مو FF. قارن السجلات قبل وبعد التعديل. <em>نسبة الـ FF</em> يعني كم من دفعة المحركات وقت تحريك العصا جاية من الـ FF مقارنة بالـ P. فوق 50% يعني الـ <em>Overshoot</em> غالباً من الـ FF، وتحت 30% غالباً من P أو D.",
       ffMoves: "الحركات", ff_good: "ممتاز", ff_low: "FF قليل", ff_high: "FF زايد", ff_over: "Overshoot (P/D؟)", ff_overFF: "Overshoot من الـ FF", ff_overMix: "Overshoot من FF و P", ffShare: "نسبة الـ FF", cause_ff: "FF", cause_pd: "P/D", cause_mix: "FF+P",
@@ -549,8 +549,11 @@ self.onmessage = (e) => {
   }
 
   // ---------- tables ----------
-  function verdict(peak) {
-    if (peak == null) return "";
+  function verdict(m) {
+    if (!m) return "";
+    // a curve that never settles near 1 makes peak and overshoot disagree: say so instead of grading it
+    if (m.steady < 0.85 || m.steady > 1.15) return '<span class="chip warn">' + t("unsteady") + "</span>";
+    const peak = 1 + m.overshoot / 100;
     if (peak > 1.25) return '<span class="chip bad">' + t("highOver") + "</span>";
     if (peak > 1.15) return '<span class="chip warn">' + t("over") + "</span>";
     if (peak >= 0.98) return '<span class="chip good">' + t("good") + "</span>";
@@ -574,7 +577,7 @@ self.onmessage = (e) => {
           '<span class="dot" style="background:' + l.color + '"></span>' + esc(short(l)) + "</td>" +
           (m ? "<td>" + fmt(m.peak, 2) + "</td><td>" + fmt(m.overshoot, 0) + " %</td><td>" + fmt(m.delay, 1) + " ms</td><td>" + fmt(m.rise, 1) + " ms</td><td>" + fmt(m.settling, 0) + " ms</td><td>" + fmt(m.steady, 2) + "</td>"
              : '<td colspan="6">' + t("noInput") + "</td>") +
-          "<td>" + nOf(l, a) + "</td><td>" + (m ? verdict(m.peak) + cause(m.peak, ax.ff) : "") + "</td></tr>";
+          "<td>" + nOf(l, a) + "</td><td>" + (m ? verdict(m) + cause(1 + m.overshoot / 100, ax.ff) : "") + "</td></tr>";
       });
     }
     mt.innerHTML = h;
@@ -586,7 +589,7 @@ self.onmessage = (e) => {
       ["Roll P / I / D", (x) => pidStr(x.roll)],
       ["Pitch P / I / D", (x) => pidStr(x.pitch)],
       ["Yaw P / I / D", (x) => pidStr(x.yaw)],
-      ["D min (R / P / Y)", (x) => (x.dMin && x.dMin.length ? x.dMin.slice(0, 3).join("/") : "–")],
+      ["D min / D max (R / P / Y)", (x) => (x.dMin && x.dMin.length ? x.dMin.join("/") + (x.dLabel ? " (" + x.dLabel + ")" : "") : "–")],
       ["Feedforward (R / P / Y)", (x) => (x.ff && x.ff.length ? x.ff.slice(0, 3).join("/") : "–")],
       ["TPA rate / breakpoint", (x) => (x.tpaRate != null ? x.tpaRate + " / " + (x.tpaBreakpoint ?? "–") : "–")],
       ["Setpoint source", (x) => (x.setpointSource === "setpoint" ? t("srcSet") : t("srcRec"))],
