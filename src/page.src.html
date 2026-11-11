@@ -123,6 +123,13 @@ td.diff { color: var(--accent); font-weight: 500; }
 h3 { font: 700 14px var(--f-display); letter-spacing: .1em; text-transform: uppercase; margin: 0 0 8px; }
 .note em, .howto em, .example-banner em, footer em, .drop em { font-style: normal; font-weight: 600; color: var(--accent); unicode-bidi: isolate; }
 .howto b em { font-weight: inherit; }
+.recs { display: grid; gap: 10px; }
+.rec { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 10px 14px; }
+.rec h4 { margin: 0 0 6px; font: 600 13px var(--f-display); letter-spacing: .03em; display: flex; align-items: center; gap: 8px; unicode-bidi: plaintext; }
+.rec ul { margin: 0; padding-inline-start: 18px; display: grid; gap: 4px; }
+.rec li b { font: 700 11px var(--f-display); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); margin-inline-end: 6px; }
+.rec li.ok { color: var(--good); } .rec li.info { color: var(--muted); }
+.rec em { font-style: normal; font-weight: 600; color: var(--accent); unicode-bidi: isolate; }
 .terms { display: grid; grid-template-columns: max-content minmax(0,1fr); gap: 3px 16px; margin: 4px 0 0; }
 .terms dt { font-weight: 600; color: var(--fg); }
 .terms dd { margin: 0; }
@@ -191,6 +198,11 @@ footer a { color: var(--fg); }
       <p class="note" data-i18n="lowData"></p>
 
       <section class="tables">
+        <div>
+          <h3 data-i18n="recH"></h3>
+          <div class="recs" id="recs"></div>
+          <p class="note" data-i18n="recN"></p>
+        </div>
         <div>
           <h3 data-i18n="metricsH"></h3>
           <div class="tbl-wrap"><table id="mt"></table></div>
@@ -265,6 +277,21 @@ self.onmessage = (e) => {
 
   const I18N = {
     en: {
+      recH: "Suggestions", recN: "Rough starting points, not rules. Change one thing at a time by about 10%, fly the same moves again and compare the two logs here.",
+      rFly: "Not enough stick input to judge this axis. Fly 30 s or more with hard flips, rolls and snaps.",
+      rLog: "Fix logging first: this log has dropped or corrupt data, so the numbers can't be trusted.",
+      rOverFF: (o) => "Overshoot " + o + "% and most of the push comes from FF: lower FF on this axis about 10–15%.",
+      rOverPD: (o) => "Overshoot " + o + "%: lower P about 10%, or raise D about 10%.",
+      rOverMix: (o) => "Overshoot " + o + "% from both FF and P: lower FF about 10% first, then P if it's still high.",
+      rOverMild: (o) => "Small overshoot " + o + "%. Fine for a sharp tune; if you want it smoother, lower P about 5%.",
+      rSoft: "Slow response, the curve stays below 1.0: raise P about 10%.",
+      rSteadyLow: (v) => "Settles at " + v + ", below 1.0: raise I about 10%.",
+      rSteadyHigh: (v) => "Settles at " + v + ", above 1.0: I may be high, lower it about 10%.",
+      rDelay: (d) => "Delay " + d + " ms is long: check gyro and D-term filters, they may be too heavy.",
+      rFFLow: (l) => "Lag " + l + " ms on fast moves: raise FF about 10–15%.",
+      rFFHigh: "Gyro runs ahead of the stick: lower FF about 10–15%.",
+      rFFTrack: "Gyro doesn't follow the stick on this axis. Check the PID values and that this was a real flight.",
+      rGood: "Looks good, nothing to change on this axis.",
       tagline: "Free PID step response & log comparison for Betaflight blackbox logs. Runs in your browser — logs never leave your device.",
       open: "Open BBL logs", lang: "عربي", clear: "Clear all", cleared: "All logs cleared. Open new ones.",
       dropT: "Drop .BBL / .BFL files here", dropS: "Add several logs to overlay them — e.g. before and after a tune change.",
@@ -305,6 +332,21 @@ self.onmessage = (e) => {
       healthStatus: (n) => "⚠ " + n + " with logging artefacts — see the log card.",
     },
     ar: {
+      recH: "التوصيات", recN: "هذه نقاط بداية تقريبية وليست قواعد ثابتة. غيّر شيئاً واحداً في كل مرة بحوالي 10%، ثم أعد التجربة بنفس الحركات وقارن السجلين هنا.",
+      rFly: "حركة عصا التحكم غير كافية للحكم على هذا المحور. أعد التجربة لمدة 30 ثانية أو أكثر مع Flips و Rolls وحركات سريعة قوية.",
+      rLog: "أصلح التسجيل أولاً: في هذا السجل بيانات ناقصة أو تالفة، لذلك لا يمكن الاعتماد على الأرقام.",
+      rOverFF: (o) => "يوجد Overshoot " + o + "% وأغلب الدفع من الـ FF: اخفض الـ FF على هذا المحور بحوالي 10 إلى 15%.",
+      rOverPD: (o) => "يوجد Overshoot " + o + "%: اخفض P بحوالي 10%، أو ارفع D بحوالي 10%.",
+      rOverMix: (o) => "يوجد Overshoot " + o + "% من الـ FF والـ P معاً: اخفض الـ FF بحوالي 10% أولاً، ثم P إذا بقي مرتفعاً.",
+      rOverMild: (o) => "يوجد Overshoot بسيط " + o + "%. طبيعي في الضبط الحاد، وإذا أردت استجابة أنعم اخفض P بحوالي 5%.",
+      rSoft: "الاستجابة بطيئة والمنحنى تحت 1.0: ارفع P بحوالي 10%.",
+      rSteadyLow: (v) => "يستقر عند " + v + "، أقل من 1.0: ارفع I بحوالي 10%.",
+      rSteadyHigh: (v) => "يستقر عند " + v + "، أعلى من 1.0: قد يكون I مرتفعاً، اخفضه بحوالي 10%.",
+      rDelay: (d) => "الـ Delay " + d + " ms طويل: راجع فلاتر الـ gyro والـ D-term، قد تكون قوية أكثر من اللازم.",
+      rFFLow: (l) => "الـ Lag " + l + " ms في الحركات السريعة: ارفع الـ FF بحوالي 10 إلى 15%.",
+      rFFHigh: "الجايرو يسبق عصا التحكم: اخفض الـ FF بحوالي 10 إلى 15%.",
+      rFFTrack: "الجايرو لا يتبع عصا التحكم على هذا المحور. راجع قيم الـ PID وتأكد أن السجل لطيران حقيقي.",
+      rGood: "ممتاز، لا يحتاج هذا المحور إلى تعديل.",
       tagline: "أداة مجانية تحلل سجلات الطيران (Blackbox) في Betaflight، وتعرض الـ Step Response وتقارن بين أكثر من سجل. تعمل داخل المتصفح، وملفاتك لا تغادر جهازك.",
       open: "افتح ملفات BBL", lang: "English", clear: "مسح الكل", cleared: "تم مسح كل السجلات، افتح سجلات جديدة.",
       dropT: "اسحب ملفات BBL أو BFL إلى هنا", dropS: "أضف أكثر من سجل للمقارنة بينها، مثلاً قبل تعديل الـ PID وبعده.",
@@ -340,7 +382,7 @@ self.onmessage = (e) => {
       hCorrupt: (n, p) => "‎" + n + " corrupt frames (" + p + "%)",
       hLowRate: (hz) => "‎Logging rate " + hz + " Hz",
       hSkipped: (k, n) => "‎" + k + " / " + n + " windows skipped",
-      hFix: "فقد الـ Blackbox جزءاً من البيانات، لذلك يظهر في خط الجايرو قفزات غير حقيقية. تم استبعاد المقاطع الناقصة من التحليل. امسح الذاكرة واخفض سرعة التسجيل، أو استخدم بطاقة ذاكرة أسرع، ثم طِر مرة أخرى.",
+      hFix: "فقد الـ Blackbox جزءاً من البيانات، لذلك يظهر في خط الجايرو قفزات غير حقيقية. تم استبعاد المقاطع الناقصة من التحليل. امسح الذاكرة واخفض سرعة التسجيل، أو استخدم بطاقة ذاكرة أسرع، ثم أعد التجربة.",
       hFixRate: "سرعة التسجيل منخفضة جداً، لذلك لا تُقرأ الحركات السريعة بدقة. ارفعها إذا كانت الذاكرة تتحمل.",
       healthStatus: (n) => "⚠ يوجد " + n + " سجل فيه أخطاء تسجيل، راجع بطاقة السجل.",
     },
@@ -360,7 +402,7 @@ self.onmessage = (e) => {
   const LATIN = /(?:\d+(?:\.\d+)?)?[A-Za-z][A-Za-z0-9]*(?:[-/+.][A-Za-z0-9]+)*(?:\s+[A-Za-z][A-Za-z0-9]*(?:[-/+.][A-Za-z0-9]+)*)*/g;
   function markLatin(root) {
     const walk = document.createTreeWalker(root, NodeFilter.SHOW_TEXT), nodes = [];
-    while (walk.nextNode()) { const n = walk.currentNode; if (!n.parentElement.closest("em, a")) nodes.push(n); }
+    while (walk.nextNode()) { const n = walk.currentNode; if (!n.parentElement.closest("em, a, .rec b")) nodes.push(n); }
     nodes.forEach((n) => {
       const txt = n.nodeValue; LATIN.lastIndex = 0;
       if (!LATIN.test(txt)) return;
@@ -621,6 +663,7 @@ self.onmessage = (e) => {
     }
     mt.innerHTML = h;
     renderFF(vis);
+    renderRecs(vis);
 
     const rows = [
       ["Firmware", (x) => x.firmware],
@@ -649,6 +692,41 @@ self.onmessage = (e) => {
       p += "<tr><td>" + esc(label) + "</td>" + vals.map((v) => '<td class="' + (differs ? "diff" : "") + '">' + esc(v) + "</td>").join("") + "</tr>";
     });
     $("pt").innerHTML = p;
+  }
+  // ---------- suggestions ----------
+  // One card per visible log. Order matters: bad data first, then FF-caused overshoot, then P/D, I, filters.
+  function axisRecs(l, a) {
+    const ax = l.axes[a], m = ax.m, ff = ax.ff || {}, out = [];
+    if (!m || (ax.n ?? ax.windows) < LOW_N || m.steady < 0.85 || m.steady > 1.15) {
+      if (ff.verdict === "noTrack") return [["warn", t("rFFTrack")]];
+      return [["info", t("rFly")]];
+    }
+    const o = Math.round(m.overshoot), share = ff.share;
+    if (o > 25) {
+      if (share != null && share >= 0.5) out.push(["warn", t("rOverFF", o)]);
+      else if (share != null && share > 0.3) out.push(["warn", t("rOverMix", o)]);
+      else out.push(["warn", t("rOverPD", o)]);
+    } else if (o > 15) out.push(["warn", t("rOverMild", o)]);
+    else if (m.peak < 0.98) out.push(["warn", t("rSoft")]);
+    if (m.steady < 0.95) out.push(["warn", t("rSteadyLow", m.steady.toFixed(2))]);
+    else if (m.steady > 1.05) out.push(["warn", t("rSteadyHigh", m.steady.toFixed(2))]);
+    if (m.delay != null && m.delay > 15) out.push(["warn", t("rDelay", m.delay.toFixed(1))]);
+    if (ff.verdict === "low" && ff.events >= 5) out.push(["warn", t("rFFLow", ff.lagMs)]);
+    if (ff.verdict === "high") out.push(["warn", t("rFFHigh")]);
+    if (ff.verdict === "noTrack") out.push(["warn", t("rFFTrack")]);
+    if (!out.length) out.push(["ok", t("rGood")]);
+    return out;
+  }
+  function renderRecs(vis) {
+    const box = $("recs");
+    if (!vis.length) { box.innerHTML = ""; return; }
+    box.innerHTML = vis.map((l) => {
+      const bad = l.health && l.health.level === "bad";
+      const items = bad ? '<li class="warn">' + esc(t("rLog")) + "</li>"
+        : [0, 1, 2].map((a) => axisRecs(l, a).map(([k, txt]) => '<li class="' + k + '"><b>' + AX[a] + "</b>" + esc(txt) + "</li>").join("")).join("");
+      return '<div class="rec"><h4><span class="dot" style="display:inline-block;width:9px;height:9px;border-radius:2px;background:' + l.color + '"></span>' + esc(short(l)) + "</h4><ul>" + items + "</ul></div>";
+    }).join("");
+    if (lang === "ar") box.querySelectorAll("li").forEach(markLatin);
   }
   function ffChip(v) {
     const cls = { good: "good", low: "warn", high: "bad", over: "warn", overFF: "warn", overMix: "warn" }[v];
