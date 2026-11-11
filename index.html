@@ -128,7 +128,13 @@ td .dot { display: inline-block; width: 9px; height: 9px; border-radius: 2px; ma
 .chip.good { color: var(--good); } .chip.warn { color: var(--warn); } .chip.bad { color: var(--bad); }
 td.diff { color: var(--accent); font-weight: 500; }
 h3 { font: 700 14px var(--f-display); letter-spacing: .1em; text-transform: uppercase; margin: 0 0 8px; }
-.note em { font-style: normal; font-weight: 600; color: var(--accent); }
+.note em, .howto em, .example-banner em, footer em, .drop em { font-style: normal; font-weight: 600; color: var(--accent); unicode-bidi: isolate; }
+.howto b em { font-weight: inherit; }
+.terms { display: grid; grid-template-columns: max-content minmax(0,1fr); gap: 3px 16px; margin: 4px 0 0; }
+.terms dt { font-weight: 600; color: var(--fg); }
+.terms dd { margin: 0; }
+.note p { margin: 0 0 4px; } .note .sub { margin: 10px 0 0; color: var(--fg); font-weight: 600; }
+@media (max-width: 600px) { .terms { grid-template-columns: minmax(0,1fr); gap: 0; } .terms dd { margin-bottom: 6px; } }
 .note { color: var(--muted); font-size: 13px; max-width: 72ch; margin: 6px 0 0; }
 .howto { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; }
 .howto div { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; }
@@ -195,12 +201,12 @@ footer a { color: var(--fg); }
         <div>
           <h3 data-i18n="metricsH"></h3>
           <div class="tbl-wrap"><table id="mt"></table></div>
-          <p class="note" data-i18n="metricsN"></p>
+          <div class="note" data-i18n-html="metricsN"></div>
         </div>
         <div>
           <h3>Feedforward</h3>
           <div class="tbl-wrap"><table id="fft"></table></div>
-          <p class="note" data-i18n-html="ffN"></p>
+          <div class="note" data-i18n-html="ffN"></div>
         </div>
         <div>
           <h3 data-i18n="tuneH"></h3>
@@ -789,7 +795,7 @@ self.onmessage = (e) => {
       example: "<b>Example loaded:</b> PID-Analyzer's public sample logs (stock tune vs good tune, Betaflight 3.1). Open your own logs to replace them.",
       rngLow: "Input < 500°/s", rngHigh: "Input > 500°/s",
       metricsH: "Response metrics",
-      metricsN: "Peak is the highest point in the first 150 ms. Delay is time to 50% of steady state, Rise is 10→90%, Settling is when the curve stays within ±5%. Steady is the average level from 200 ms on (1.00 = tracks the stick exactly).",
+      metricsN: "<dl class=\"terms\"><dt>Peak</dt><dd>highest point in the first 150 ms</dd><dt>Overshoot</dt><dd>how far the peak goes past the steady level</dd><dt>Delay</dt><dd>time to reach 50%</dd><dt>Rise</dt><dd>time from 10% to 90%</dd><dt>Settling</dt><dd>time until the curve stays within ±5%</dd><dt>Steady</dt><dd>level from 200 ms on, should be close to 1.00</dd></dl>",
       tuneH: "Tune from log header", tuneN: "Values that differ between loaded logs are highlighted.",
       h1: "Tight and well damped. A small overshoot is normal for a crisp tune.",
       h2: "Overshoot. Usually too much P for the D you have — lower P or raise D.",
@@ -809,7 +815,7 @@ self.onmessage = (e) => {
       axisLog: "Axis / log", setting: "Setting", read: "Read",
       good: "Good", over: "Overshoot", unsteady: "Unclear, few moves", highOver: "High overshoot", soft: "Soft",
       srcSet: "setpoint", srcRec: "rebuilt from gyro + P-term",
-      ffN: "Only fast stick moves are used. <em>Lag</em> is how far the gyro trails your stick (lower is sharper, below 0 means the gyro is ahead). <em>Overshoot</em> is how far the gyro goes past the new rate when a fast move ends. Too low FF: high lag, raise FF. Too high FF: lag near 0 or below with overshoot, lower FF. <em>Overshoot</em> with normal lag is usually P or D, not FF. Compare logs before and after a change. <em>FF share</em> is how much of the push during stick moves comes from FF versus P: above 50% the <em>Overshoot</em> is likely from FF, below 30% likely from P or D.",
+      ffN: "<p>Only fast stick moves are used. Compare logs before and after a change.</p><dl class=\"terms\"><dt>Lag</dt><dd>how far the gyro trails the stick. Lower is sharper, below 0 means the gyro is ahead</dd><dt>Overshoot</dt><dd>how far the gyro goes past the new rate when a fast move ends</dd><dt>FF share</dt><dd>how much of the push during stick moves comes from FF versus P</dd></dl><p class=\"sub\">Reading the result</p><dl class=\"terms\"><dt>High Lag</dt><dd>FF too low, raise it</dd><dt>Lag ≈ 0 or below + Overshoot</dt><dd>FF too high, lower it</dd><dt>Overshoot + normal Lag</dt><dd>usually P or D, not FF</dd><dt>FF share above 50%</dt><dd>overshoot likely from FF</dd><dt>FF share below 30%</dt><dd>overshoot likely from P or D</dd></dl>",
       ffMoves: "Moves", ff_good: "Good", ff_low: "FF low", ff_high: "FF high", ff_over: "Overshoot (P/D?)", ff_overFF: "Overshoot from FF", ff_overMix: "Overshoot (FF + P)", ffShare: "FF share", cause_ff: "FF", cause_pd: "P/D", cause_mix: "FF+P",
       ffNone: "not enough fast stick moves", ffFew: "few moves, read with care", ffNoSet: "needs Betaflight 4.x log (real setpoint)", ffNoTrack: "gyro doesn't follow the stick (bench log, props off, or wrong axis?)", ffUnclear: "lag couldn't be measured, read with care", ffNoData: "–",
       hOk: "Log looks clean", hWarn: "Logging artefacts", hBad: "Log not reliable", hRow: "Log health",
@@ -829,7 +835,7 @@ self.onmessage = (e) => {
       example: "<b>هذا مثال:</b> سجلات عامة من PID-Analyzer، إعدادات أصلية مقابل إعدادات معدّلة على Betaflight 3.1. افتح سجلاتك وسيختفي المثال.",
       rngLow: "حركات عادية  ‎< 500°/s", rngHigh: "حركات قوية  ‎> 500°/s",
       metricsH: "أرقام الاستجابة",
-      metricsN: "Peak أعلى نقطة في أول 150ms. Delay الوقت حتى يصل إلى 50%. Rise الوقت من 10% إلى 90%. Settling الوقت حتى يستقر المنحنى ضمن ±5%. Steady المستوى الذي يستقر عليه بعد 200ms، ويجب أن يكون قريباً من 1.00.",
+      metricsN: "<dl class=\"terms\"><dt>Peak</dt><dd>أعلى نقطة في أول 150ms</dd><dt>Overshoot</dt><dd>مقدار تجاوز القمة للمستوى الذي يستقر عليه المنحنى</dd><dt>Delay</dt><dd>الوقت حتى يصل إلى 50%</dd><dt>Rise</dt><dd>الوقت من 10% إلى 90%</dd><dt>Settling</dt><dd>الوقت حتى يستقر المنحنى ضمن ±5%</dd><dt>Steady</dt><dd>المستوى الذي يستقر عليه بعد 200ms، ويجب أن يكون قريباً من 1.00</dd></dl>",
       tuneH: "إعدادات الـ PID المحفوظة في السجل", tuneN: "القيم المختلفة بين السجلات تظهر باللون الأحمر.",
       h1: "استجابة سريعة ومتزنة. قليل من الـ Overshoot طبيعي إذا كان الضبط حاداً.",
       h2: "يوجد Overshoot. غالباً الـ P مرتفع مقارنة بالـ D، اخفض P أو ارفع D.",
@@ -849,7 +855,7 @@ self.onmessage = (e) => {
       axisLog: "المحور / السجل", setting: "الإعداد", read: "التقييم",
       good: "ممتاز", over: "Overshoot", unsteady: "غير واضح، الحركات قليلة", highOver: "Overshoot مرتفع", soft: "بطيء",
       srcSet: "setpoint", srcRec: "محسوب من gyro و P-term",
-      ffN: "التحليل على الحركات السريعة فقط. <em>Lag</em> هو مقدار تأخر الجايرو عن عصا التحكم، وكلما قل كان أفضل، وإذا كان سالباً فالجايرو يسبق العصا. <em>Overshoot</em> هو مقدار تجاوز الجايرو للسرعة الجديدة عند انتهاء الحركة. إذا كان الـ FF منخفضاً يظهر <em>Lag</em> مرتفع، فارفعه. وإذا كان مرتفعاً أكثر من اللازم يظهر <em>Lag</em> قريب من الصفر أو سالب مع <em>Overshoot</em>، فاخفضه. وإذا ظهر <em>Overshoot</em> مع <em>Lag</em> طبيعي، فالسبب غالباً P أو D وليس FF. قارن السجلات قبل التعديل وبعده. <em>نسبة الـ FF</em> هي حصة الـ FF من دفع المحركات أثناء تحريك العصا مقارنة بالـ P. فوق 50% يعني أن الـ <em>Overshoot</em> غالباً من الـ FF، وتحت 30% غالباً من P أو D.",
+      ffN: "<p>التحليل على الحركات السريعة فقط. قارن السجلات قبل التعديل وبعده.</p><dl class=\"terms\"><dt>Lag</dt><dd>مقدار تأخر الجايرو عن عصا التحكم. كلما قل كان أفضل، وإذا كان سالباً فالجايرو يسبق العصا</dd><dt>Overshoot</dt><dd>مقدار تجاوز الجايرو للسرعة الجديدة عند انتهاء الحركة</dd><dt>نسبة الـ FF</dt><dd>حصة الـ FF من دفع المحركات أثناء تحريك العصا مقارنة بالـ P</dd></dl><p class=\"sub\">كيف تقرأ النتيجة</p><dl class=\"terms\"><dt>Lag مرتفع</dt><dd>الـ FF منخفض، ارفعه</dd><dt>Lag قريب من الصفر أو سالب مع Overshoot</dt><dd>الـ FF مرتفع، اخفضه</dd><dt>Overshoot مع Lag طبيعي</dt><dd>السبب غالباً P أو D وليس FF</dd><dt>نسبة الـ FF فوق 50%</dt><dd>الـ Overshoot غالباً من الـ FF</dd><dt>نسبة الـ FF تحت 30%</dt><dd>الـ Overshoot غالباً من P أو D</dd></dl>",
       ffMoves: "الحركات", ff_good: "ممتاز", ff_low: "FF منخفض", ff_high: "FF مرتفع", ff_over: "Overshoot (P/D؟)", ff_overFF: "Overshoot من الـ FF", ff_overMix: "Overshoot من FF و P", ffShare: "نسبة الـ FF", cause_ff: "FF", cause_pd: "P/D", cause_mix: "FF+P",
       ffNone: "لا توجد حركات سريعة كافية", ffFew: "الحركات قليلة، فلا تعتمد عليه كثيراً", ffNoSet: "يحتاج سجلاً من Betaflight 4 أو أحدث", ffNoTrack: "الجايرو لا يتبع عصا التحكم. هل السجل على الأرض أو بدون مراوح؟", ffUnclear: "تعذر قياس الـ Lag، فلا تعتمد عليه", ffNoData: "–",
       hOk: "السجل سليم", hWarn: "يوجد أخطاء في التسجيل", hBad: "السجل غير موثوق", hRow: "سلامة السجل",
@@ -871,6 +877,26 @@ self.onmessage = (e) => {
     document.querySelectorAll("[data-i18n]").forEach((el) => { el.textContent = t(el.dataset.i18n); });
     document.querySelectorAll("[data-i18n-html]").forEach((el) => { el.innerHTML = t(el.dataset.i18nHtml); });
     const b = document.getElementById("langBtn"); b.textContent = t("lang"); b.lang = lang === "ar" ? "en" : "ar";
+    if (lang === "ar") w.querySelectorAll(".note, .howto div, .example-banner, footer > span, .drop small").forEach(markLatin);
+  }
+  // Arabic explanations: colour every English term red and isolate it, so mixed RTL/LTR text stays in order
+  const LATIN = /(?:\d+(?:\.\d+)?)?[A-Za-z][A-Za-z0-9]*(?:[-/+.][A-Za-z0-9]+)*(?:\s+[A-Za-z][A-Za-z0-9]*(?:[-/+.][A-Za-z0-9]+)*)*/g;
+  function markLatin(root) {
+    const walk = document.createTreeWalker(root, NodeFilter.SHOW_TEXT), nodes = [];
+    while (walk.nextNode()) { const n = walk.currentNode; if (!n.parentElement.closest("em, a")) nodes.push(n); }
+    nodes.forEach((n) => {
+      const txt = n.nodeValue; LATIN.lastIndex = 0;
+      if (!LATIN.test(txt)) return;
+      LATIN.lastIndex = 0;
+      const frag = document.createDocumentFragment(); let last = 0, m;
+      while ((m = LATIN.exec(txt))) {
+        if (m.index > last) frag.appendChild(document.createTextNode(txt.slice(last, m.index)));
+        const em = document.createElement("em"); em.textContent = m[0]; frag.appendChild(em);
+        last = m.index + m[0].length;
+      }
+      if (last < txt.length) frag.appendChild(document.createTextNode(txt.slice(last)));
+      n.replaceWith(frag);
+    });
   }
   const $ = (id) => document.getElementById(id);
   const css = (v) => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
