@@ -84,6 +84,11 @@ header.top { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; pad
 .scope { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 12px 12px 8px; min-width: 0; }
 .scope h2 { font: 700 15px var(--f-display); letter-spacing: .08em; text-transform: uppercase; margin: 0; display: flex; align-items: baseline; gap: 8px; }
 .scope h2 small { font: 400 11px var(--f-mono); letter-spacing: 0; text-transform: none; color: var(--muted); }
+.readout { display: grid; gap: 2px; margin-top: 6px; padding-top: 6px; border-top: 1px solid var(--grid); }
+.readout .r { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 14px; font: 12px/1.5 var(--f-mono); font-variant-numeric: tabular-nums; direction: ltr; }
+.readout .r .nm { color: var(--muted); max-width: 22ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.readout .r span b { font-weight: 500; color: var(--muted); margin-right: 5px; }
+.readout .r .none { color: var(--muted); }
 .scope canvas { direction: ltr; width: 100%; height: 340px; display: block; margin-top: 6px; touch-action: none; }
 
 section.tables { margin-top: 22px; display: grid; gap: 18px; }
@@ -156,9 +161,9 @@ footer a { color: var(--fg); }
         </div>
       </div>
       <div class="scopes">
-        <div class="scope"><h2>Roll <small id="sub0"></small></h2><canvas id="c0"></canvas></div>
-        <div class="scope"><h2>Pitch <small id="sub1"></small></h2><canvas id="c1"></canvas></div>
-        <div class="scope"><h2>Yaw <small id="sub2"></small></h2><canvas id="c2"></canvas></div>
+        <div class="scope"><h2>Roll <small id="sub0"></small></h2><canvas id="c0"></canvas><div class="readout" id="ro0"></div></div>
+        <div class="scope"><h2>Pitch <small id="sub1"></small></h2><canvas id="c1"></canvas><div class="readout" id="ro1"></div></div>
+        <div class="scope"><h2>Yaw <small id="sub2"></small></h2><canvas id="c2"></canvas><div class="readout" id="ro2"></div></div>
       </div>
       <p class="note" data-i18n="lowData"></p>
 
@@ -244,7 +249,7 @@ self.onmessage = (e) => {
       example: "<b>Example loaded:</b> PID-Analyzer's public sample logs (stock tune vs good tune, Betaflight 3.1). Open your own logs to replace them.",
       rngLow: "Input < 500°/s", rngHigh: "Input > 500°/s",
       metricsH: "Response metrics",
-      metricsN: "Peak is the highest point in the first 150 ms. Delay is time to 50% of steady state, Rise is 10→90%, Settling is when the curve stays within ±5%.",
+      metricsN: "Peak is the highest point in the first 150 ms. Delay is time to 50% of steady state, Rise is 10→90%, Settling is when the curve stays within ±5%. Steady is the average level from 200 ms on (1.00 = tracks the stick exactly).",
       tuneH: "Tune from log header", tuneN: "Values that differ between loaded logs are highlighted.",
       h1: "Tight and well damped. A small overshoot is normal for a crisp tune.",
       h2: "Overshoot. Usually too much P for the D you have — lower P or raise D.",
@@ -284,7 +289,7 @@ self.onmessage = (e) => {
       example: "<b>هذا مثال:</b> سجلات عامة من PID-Analyzer، إعدادات أصلية مقابل إعدادات معدّلة على Betaflight 3.1. افتح سجلاتك وبيختفي المثال.",
       rngLow: "حركات عادية  ‎< 500°/s", rngHigh: "حركات قوية  ‎> 500°/s",
       metricsH: "أرقام الاستجابة",
-      metricsN: "Peak أعلى نقطة بأول 150ms. Delay الوقت لين يوصل 50%. Rise الوقت من 10% لين 90%. Settling متى يثبت المنحنى ضمن ±5%.",
+      metricsN: "Peak أعلى نقطة بأول 150ms. Delay الوقت لين يوصل 50%. Rise الوقت من 10% لين 90%. Settling متى يثبت المنحنى ضمن ±5%. Steady المستوى اللي يثبت عليه بعد 200ms، والمفروض يكون قريب من 1.00.",
       tuneH: "إعدادات الـ PID المحفوظة بالسجل", tuneN: "القيم اللي تختلف بين السجلات تطلع بالأحمر.",
       h1: "استجابة سريعة ومتزنة. شوية Overshoot عادي إذا الضبط حاد.",
       h2: "فيه Overshoot. غالباً الـ P عالي مقارنة بالـ D، نزّل P أو زيد D.",
@@ -453,7 +458,8 @@ self.onmessage = (e) => {
       ctx.beginPath(); ctx.moveTo(L, y); ctx.lineTo(W - R, y); ctx.stroke();
       if (Math.round(v * 10) % 4 === 0 || ymax <= 1.6) ctx.fillText(v.toFixed(1), L - 6, y);
     }
-    const step = state.win <= 150 ? 25 : state.win <= 300 ? 50 : 100;
+    let step = state.win <= 150 ? 25 : state.win <= 300 ? 50 : 100;
+    if (pw < 420) step *= 2; // narrow screens: fewer labels so they don't collide
     ctx.textAlign = "center"; ctx.textBaseline = "top";
     for (let ms = 0; ms <= state.win; ms += step) {
       const x = Math.round(X(ms)) + 0.5;
@@ -506,6 +512,22 @@ self.onmessage = (e) => {
     }
     const sub = $("sub" + a);
     sub.textContent = vis.length ? "N = " + vis.map((l) => nOf(l, a)).join(" · ") : "";
+    renderReadout(a, vis);
+  }
+  // compact numbers under each chart, one row per visible log
+  function renderReadout(a, vis) {
+    const box = $("ro" + a);
+    const rows = state.logs.filter((l) => l.visible).map((l) => {
+      const ax = l.axes[a], m = state.rng === "high" ? ax.mHigh : ax.m;
+      const head = '<i class="dot" style="background:' + l.color + ';display:inline-block;width:9px;height:9px;border-radius:2px"></i>' +
+        (vis.length > 1 || state.logs.filter((x) => x.visible).length > 1 ? '<span class="nm" title="' + esc(short(l)) + '">' + esc(short(l)) + "</span>" : "");
+      if (!m) return '<div class="r">' + head + '<span class="none">' + t("noInput") + "</span></div>";
+      const it = (k, v) => "<span><b>" + k + "</b>" + v + "</span>";
+      return '<div class="r">' + head + it("Peak", fmt(m.peak, 2)) + it("Overshoot", fmt(m.overshoot, 0) + "%") +
+        it("Delay", fmt(m.delay, 1) + "ms") + it("Rise", fmt(m.rise, 1) + "ms") + it("Steady", fmt(m.steady, 2)) + "</div>";
+    });
+    box.innerHTML = rows.join("");
+    box.hidden = !rows.length;
   }
   function drawAll() { for (let a = 0; a < 3; a++) drawAxis(a); }
   for (let a = 0; a < 3; a++) {
@@ -532,14 +554,14 @@ self.onmessage = (e) => {
     const vis = state.logs.filter((l) => l.visible);
     const mt = $("mt");
     if (!vis.length) { mt.innerHTML = "<tr><td>" + t("noVisible") + "</td></tr>"; $("pt").innerHTML = mt.innerHTML; $("fft").innerHTML = mt.innerHTML; return; }
-    let h = "<tr><th>" + t("axisLog") + "</th><th>Peak</th><th>Overshoot</th><th>Delay</th><th>Rise</th><th>Settling</th><th>N</th><th>" + t("read") + "</th></tr>";
+    let h = "<tr><th>" + t("axisLog") + "</th><th>Peak</th><th>Overshoot</th><th>Delay</th><th>Rise</th><th>Settling</th><th>Steady</th><th>N</th><th>" + t("read") + "</th></tr>";
     for (let a = 0; a < 3; a++) {
       vis.forEach((l, i) => {
         const ax = l.axes[a], m = state.rng === "high" ? ax.mHigh : ax.m;
         h += "<tr>" + (i === 0 ? "" : "") + '<td>' + (i === 0 ? '<span class="axis-l" style="font:700 12px var(--f-display);letter-spacing:.08em;text-transform:uppercase;color:var(--muted);display:inline-block;width:52px">' + AX[a] + "</span>" : '<span style="display:inline-block;width:52px"></span>') +
           '<span class="dot" style="background:' + l.color + '"></span>' + esc(short(l)) + "</td>" +
-          (m ? "<td>" + fmt(m.peak, 2) + "</td><td>" + fmt(m.overshoot, 0) + " %</td><td>" + fmt(m.delay, 1) + " ms</td><td>" + fmt(m.rise, 1) + " ms</td><td>" + fmt(m.settling, 0) + " ms</td>"
-             : '<td colspan="5">' + t("noInput") + "</td>") +
+          (m ? "<td>" + fmt(m.peak, 2) + "</td><td>" + fmt(m.overshoot, 0) + " %</td><td>" + fmt(m.delay, 1) + " ms</td><td>" + fmt(m.rise, 1) + " ms</td><td>" + fmt(m.settling, 0) + " ms</td><td>" + fmt(m.steady, 2) + "</td>"
+             : '<td colspan="6">' + t("noInput") + "</td>") +
           "<td>" + nOf(l, a) + "</td><td>" + (m ? verdict(m.peak) : "") + "</td></tr>";
       });
     }
