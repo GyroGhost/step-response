@@ -91,6 +91,11 @@ header.top { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; pad
 .scope { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 12px 12px 8px; min-width: 0; }
 .scope h2 { font: 700 15px var(--f-display); letter-spacing: .08em; text-transform: uppercase; margin: 0; display: flex; align-items: baseline; gap: 8px; }
 .scope h2 small { font: 400 11px var(--f-mono); letter-spacing: 0; text-transform: none; color: var(--muted); }
+.readout { display: grid; gap: 2px; margin-top: 6px; padding-top: 6px; border-top: 1px solid var(--grid); }
+.readout .r { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 14px; font: 12px/1.5 var(--f-mono); font-variant-numeric: tabular-nums; direction: ltr; }
+.readout .r .nm { color: var(--muted); max-width: 22ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.readout .r span b { font-weight: 500; color: var(--muted); margin-right: 5px; }
+.readout .r .none { color: var(--muted); }
 .scope canvas { direction: ltr; width: 100%; height: 340px; display: block; margin-top: 6px; touch-action: none; }
 
 section.tables { margin-top: 22px; display: grid; gap: 18px; }
@@ -100,6 +105,10 @@ th, td { padding: 8px 12px; white-space: nowrap; border-bottom: 1px solid var(--
 th { font: 600 11px var(--f-display); letter-spacing: .1em; text-transform: uppercase; color: var(--muted); background: var(--panel-2); }
 th, td { text-align: end; }
 th:first-child, td:first-child { text-align: start; }
+/* td has unicode-bidi: plaintext, so a cell holding only Latin digits resolves to LTR and "end" flips
+   to the right edge while Arabic headers stay on the left. Pin the sides physically in RTL. */
+[dir="rtl"] th, [dir="rtl"] td { text-align: left; }
+[dir="rtl"] th:first-child, [dir="rtl"] td:first-child { text-align: right; }
 tr:last-child td { border-bottom: 0; }
 td.axis { font: 700 12px var(--f-display); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
 td .dot { display: inline-block; width: 9px; height: 9px; border-radius: 2px; margin-right: 7px; vertical-align: 0; }
@@ -107,6 +116,7 @@ td .dot { display: inline-block; width: 9px; height: 9px; border-radius: 2px; ma
 .chip.good { color: var(--good); } .chip.warn { color: var(--warn); } .chip.bad { color: var(--bad); }
 td.diff { color: var(--accent); font-weight: 500; }
 h3 { font: 700 14px var(--f-display); letter-spacing: .1em; text-transform: uppercase; margin: 0 0 8px; }
+.note em { font-style: normal; font-weight: 600; color: var(--accent); }
 .note { color: var(--muted); font-size: 13px; max-width: 72ch; margin: 6px 0 0; }
 .howto { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; }
 .howto div { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; }
@@ -163,9 +173,9 @@ footer a { color: var(--fg); }
         </div>
       </div>
       <div class="scopes">
-        <div class="scope"><h2>Roll <small id="sub0"></small></h2><canvas id="c0"></canvas></div>
-        <div class="scope"><h2>Pitch <small id="sub1"></small></h2><canvas id="c1"></canvas></div>
-        <div class="scope"><h2>Yaw <small id="sub2"></small></h2><canvas id="c2"></canvas></div>
+        <div class="scope"><h2>Roll <small id="sub0"></small></h2><canvas id="c0"></canvas><div class="readout" id="ro0"></div></div>
+        <div class="scope"><h2>Pitch <small id="sub1"></small></h2><canvas id="c1"></canvas><div class="readout" id="ro1"></div></div>
+        <div class="scope"><h2>Yaw <small id="sub2"></small></h2><canvas id="c2"></canvas><div class="readout" id="ro2"></div></div>
       </div>
       <p class="note" data-i18n="lowData"></p>
 
@@ -178,7 +188,7 @@ footer a { color: var(--fg); }
         <div>
           <h3>Feedforward</h3>
           <div class="tbl-wrap"><table id="fft"></table></div>
-          <p class="note" data-i18n="ffN"></p>
+          <p class="note" data-i18n-html="ffN"></p>
         </div>
         <div>
           <h3 data-i18n="tuneH"></h3>
@@ -615,7 +625,7 @@ self.window = self;
   // ---------- feedforward check ----------
   // Looks only at fast stick moves. Lag = how far the gyro trails the setpoint (best time shift).
   // Overshoot = how far the gyro goes past the setpoint right after a fast move reaches its new rate.
-  const FF = { minSlope: 3000, minRate: 30, minPlateau: 200, maxLagMs: 40, minLagMs: -10, lagLow: 3, lagHigh: 12, over: 12, minEvents: 5, minFastS: 0.25 };
+  const FF = { minSlope: 3000, minRate: 30, minPlateau: 200, maxLagMs: 40, minLagMs: -10, lagLow: 3, lagHigh: 12, over: 12, minEvents: 5, minFastS: 0.25, minTrack: 0.4 };
 
   function ffAxis(sp, gy, dt, bad) {
     const n = sp.length, ms = (x) => Math.max(1, Math.round(x / 1000 / dt));
@@ -639,6 +649,11 @@ self.window = self;
       for (let i = 0; i < n; i++) if (fast[i]) { const d = gy[i + L] - sp[i]; e += d * d; }
       if (e < best) { best = e; lag = L; }
     }
+    // does the gyro follow the stick at all? (least-squares gain gyro/setpoint over fast moves)
+    let gs = 0, ss = 0;
+    for (let i = 0; i < n; i++) if (fast[i]) { gs += gy[i + lag] * sp[i]; ss += sp[i] * sp[i]; }
+    const track = ss ? gs / ss : 0;
+    const lagPinned = lag === lagMin || lag === lagMax; // best shift sits on the search limit: no real match
     // overshoot after each fast move away from zero that settles on a new rate
     const overs = [];
     const hold = ms(20), look = ms(60);
@@ -650,18 +665,21 @@ self.window = self;
       if (Math.abs(P) < FF.minPlateau || Math.abs(P - sp[e]) > 0.1 * Math.abs(P) || !clean(e, e + look)) continue;
       let mx = -Infinity;
       for (let j = e; j <= Math.min(n - 1, e + look); j++) mx = Math.max(mx, Math.sign(P) * gy[j]);
-      overs.push((mx / Math.abs(P) - 1) * 100);
+      const o = (mx / Math.abs(P) - 1) * 100;
+      if (o > -50) overs.push(o); // gyro never got near the new rate: not an overshoot sample
     }
     overs.sort((a, b) => a - b);
     const over = overs.length ? overs[overs.length >> 1] : null;
     const lagMs = +(lag * dt * 1000).toFixed(1);
     let verdict;
-    if (overs.length < FF.minEvents) verdict = lagMs > FF.lagHigh ? "low" : "few";
+    if (track < FF.minTrack) verdict = "noTrack";
+    else if (lagPinned) verdict = "unclear";
+    else if (overs.length < FF.minEvents) verdict = lagMs > FF.lagHigh ? "low" : "few";
     else if (lagMs < 0 || (over > FF.over && lagMs <= FF.lagLow)) verdict = "high"; // gyro ahead of the stick
     else if (lagMs > FF.lagHigh) verdict = "low";
     else if (over > FF.over) verdict = "over";
     else verdict = "good";
-    return { verdict, lagMs, overshoot: over == null ? null : +over.toFixed(1), events: overs.length, fastS: +(nFast * dt).toFixed(2) };
+    return { verdict, lagMs, track: +track.toFixed(2), overshoot: over == null ? null : +over.toFixed(1), events: overs.length, fastS: +(nFast * dt).toFixed(2) };
   }
 
   root.GGStep = { loadLogs, analyze, CFG, HEALTH, FF, ffAxis };
@@ -716,7 +734,7 @@ self.onmessage = (e) => {
       example: "<b>Example loaded:</b> PID-Analyzer's public sample logs (stock tune vs good tune, Betaflight 3.1). Open your own logs to replace them.",
       rngLow: "Input < 500°/s", rngHigh: "Input > 500°/s",
       metricsH: "Response metrics",
-      metricsN: "Peak is the highest point in the first 150 ms. Delay is time to 50% of steady state, Rise is 10→90%, Settling is when the curve stays within ±5%.",
+      metricsN: "Peak is the highest point in the first 150 ms. Delay is time to 50% of steady state, Rise is 10→90%, Settling is when the curve stays within ±5%. Steady is the average level from 200 ms on (1.00 = tracks the stick exactly).",
       tuneH: "Tune from log header", tuneN: "Values that differ between loaded logs are highlighted.",
       h1: "Tight and well damped. A small overshoot is normal for a crisp tune.",
       h2: "Overshoot. Usually too much P for the D you have — lower P or raise D.",
@@ -736,9 +754,9 @@ self.onmessage = (e) => {
       axisLog: "Axis / log", setting: "Setting", read: "Read",
       good: "Good", over: "Overshoot", highOver: "High overshoot", soft: "Soft",
       srcSet: "setpoint", srcRec: "rebuilt from gyro + P-term",
-      ffN: "Only fast stick moves are used. Lag is how far the gyro trails your stick (lower is sharper, below 0 means the gyro is ahead). Overshoot is how far the gyro goes past the new rate when a fast move ends. Too low FF: high lag, raise FF. Too high FF: lag near 0 or below with overshoot, lower FF. Overshoot with normal lag is usually P or D, not FF. Compare logs before and after a change.",
+      ffN: "Only fast stick moves are used. <em>Lag</em> is how far the gyro trails your stick (lower is sharper, below 0 means the gyro is ahead). <em>Overshoot</em> is how far the gyro goes past the new rate when a fast move ends. Too low FF: high lag, raise FF. Too high FF: lag near 0 or below with overshoot, lower FF. <em>Overshoot</em> with normal lag is usually P or D, not FF. Compare logs before and after a change.",
       ffMoves: "Moves", ff_good: "Good", ff_low: "FF low", ff_high: "FF high", ff_over: "Overshoot (P/D?)",
-      ffNone: "not enough fast stick moves", ffFew: "few moves, read with care", ffNoSet: "needs Betaflight 4.x log (real setpoint)", ffNoData: "–",
+      ffNone: "not enough fast stick moves", ffFew: "few moves, read with care", ffNoSet: "needs Betaflight 4.x log (real setpoint)", ffNoTrack: "gyro doesn't follow the stick (bench log, props off, or wrong axis?)", ffUnclear: "lag couldn't be measured, read with care", ffNoData: "–",
       hOk: "Log looks clean", hWarn: "Logging artefacts", hBad: "Log not reliable", hRow: "Log health",
       hGaps: (n, p, ms) => n + " gaps · " + p + "% of the flight missing · longest " + ms + " ms",
       hCorrupt: (n, p) => n + " corrupt frames (" + p + "%)",
@@ -756,7 +774,7 @@ self.onmessage = (e) => {
       example: "<b>هذا مثال:</b> سجلات عامة من PID-Analyzer، إعدادات أصلية مقابل إعدادات معدّلة على Betaflight 3.1. افتح سجلاتك وبيختفي المثال.",
       rngLow: "حركات عادية  ‎< 500°/s", rngHigh: "حركات قوية  ‎> 500°/s",
       metricsH: "أرقام الاستجابة",
-      metricsN: "Peak أعلى نقطة بأول 150ms. Delay الوقت لين يوصل 50%. Rise الوقت من 10% لين 90%. Settling متى يثبت المنحنى ضمن ±5%.",
+      metricsN: "Peak أعلى نقطة بأول 150ms. Delay الوقت لين يوصل 50%. Rise الوقت من 10% لين 90%. Settling متى يثبت المنحنى ضمن ±5%. Steady المستوى اللي يثبت عليه بعد 200ms، والمفروض يكون قريب من 1.00.",
       tuneH: "إعدادات الـ PID المحفوظة بالسجل", tuneN: "القيم اللي تختلف بين السجلات تطلع بالأحمر.",
       h1: "استجابة سريعة ومتزنة. شوية Overshoot عادي إذا الضبط حاد.",
       h2: "فيه Overshoot. غالباً الـ P عالي مقارنة بالـ D، نزّل P أو زيد D.",
@@ -776,9 +794,9 @@ self.onmessage = (e) => {
       axisLog: "المحور / السجل", setting: "الإعداد", read: "التقييم",
       good: "ممتاز", over: "Overshoot", highOver: "Overshoot عالي", soft: "بطيء",
       srcSet: "setpoint", srcRec: "محسوب من gyro و P-term",
-      ffN: "التحليل على الحركات السريعة بس. Lag يعني كم الجايرو متأخر عن عصا التحكم، كل ما قل كان أحسن، وإذا طلع بالسالب يعني الجايرو سابق العصا. Overshoot يعني كم الجايرو يتعدى السرعة الجديدة لما تخلص الحركة. إذا الـ FF قليل يطلع Lag عالي، فارفعه. وإذا زايد يطلع Lag قريب من الصفر أو بالسالب مع Overshoot، فنزّله. وإذا فيه Overshoot والـ Lag طبيعي، فغالباً السبب P أو D مو FF. قارن السجلات قبل وبعد التعديل.",
+      ffN: "التحليل على الحركات السريعة بس. <em>Lag</em> يعني كم الجايرو متأخر عن عصا التحكم، كل ما قل كان أحسن، وإذا طلع بالسالب يعني الجايرو سابق العصا. <em>Overshoot</em> يعني كم الجايرو يتعدى السرعة الجديدة لما تخلص الحركة. إذا الـ FF قليل يطلع <em>Lag</em> عالي، فارفعه. وإذا زايد يطلع <em>Lag</em> قريب من الصفر أو بالسالب مع <em>Overshoot</em>، فنزّله. وإذا فيه <em>Overshoot</em> والـ <em>Lag</em> طبيعي، فغالباً السبب P أو D مو FF. قارن السجلات قبل وبعد التعديل.",
       ffMoves: "الحركات", ff_good: "ممتاز", ff_low: "FF قليل", ff_high: "FF زايد", ff_over: "Overshoot (P/D؟)",
-      ffNone: "ما في حركات سريعة كفاية", ffFew: "حركات قليلة، لا تعتمد عليه وايد", ffNoSet: "يحتاج سجل من Betaflight 4 وفوق", ffNoData: "–",
+      ffNone: "ما في حركات سريعة كفاية", ffFew: "حركات قليلة، لا تعتمد عليه وايد", ffNoSet: "يحتاج سجل من Betaflight 4 وفوق", ffNoTrack: "الجايرو ما يتبع عصا التحكم. السجل على الأرض أو بدون مراوح؟", ffUnclear: "ما قدرت أقيس الـ Lag، لا تعتمد عليه", ffNoData: "–",
       hOk: "السجل سليم", hWarn: "فيه أخطاء تسجيل", hBad: "السجل مو موثوق", hRow: "سلامة السجل",
       hGaps: (n, p, ms) => "‎" + n + " gaps · " + p + "% missing · max " + ms + " ms",
       hCorrupt: (n, p) => "‎" + n + " corrupt frames (" + p + "%)",
@@ -925,7 +943,8 @@ self.onmessage = (e) => {
       ctx.beginPath(); ctx.moveTo(L, y); ctx.lineTo(W - R, y); ctx.stroke();
       if (Math.round(v * 10) % 4 === 0 || ymax <= 1.6) ctx.fillText(v.toFixed(1), L - 6, y);
     }
-    const step = state.win <= 150 ? 25 : state.win <= 300 ? 50 : 100;
+    let step = state.win <= 150 ? 25 : state.win <= 300 ? 50 : 100;
+    if (pw < 420) step *= 2; // narrow screens: fewer labels so they don't collide
     ctx.textAlign = "center"; ctx.textBaseline = "top";
     for (let ms = 0; ms <= state.win; ms += step) {
       const x = Math.round(X(ms)) + 0.5;
@@ -978,6 +997,22 @@ self.onmessage = (e) => {
     }
     const sub = $("sub" + a);
     sub.textContent = vis.length ? "N = " + vis.map((l) => nOf(l, a)).join(" · ") : "";
+    renderReadout(a, vis);
+  }
+  // compact numbers under each chart, one row per visible log
+  function renderReadout(a, vis) {
+    const box = $("ro" + a);
+    const rows = state.logs.filter((l) => l.visible).map((l) => {
+      const ax = l.axes[a], m = state.rng === "high" ? ax.mHigh : ax.m;
+      const head = '<i class="dot" style="background:' + l.color + ';display:inline-block;width:9px;height:9px;border-radius:2px"></i>' +
+        (vis.length > 1 || state.logs.filter((x) => x.visible).length > 1 ? '<span class="nm" title="' + esc(short(l)) + '">' + esc(short(l)) + "</span>" : "");
+      if (!m) return '<div class="r">' + head + '<span class="none">' + t("noInput") + "</span></div>";
+      const it = (k, v) => "<span><b>" + k + "</b>" + v + "</span>";
+      return '<div class="r">' + head + it("Peak", fmt(m.peak, 2)) + it("Overshoot", fmt(m.overshoot, 0) + "%") +
+        it("Delay", fmt(m.delay, 1) + "ms") + it("Rise", fmt(m.rise, 1) + "ms") + it("Steady", fmt(m.steady, 2)) + "</div>";
+    });
+    box.innerHTML = rows.join("");
+    box.hidden = !rows.length;
   }
   function drawAll() { for (let a = 0; a < 3; a++) drawAxis(a); }
   for (let a = 0; a < 3; a++) {
@@ -1004,14 +1039,14 @@ self.onmessage = (e) => {
     const vis = state.logs.filter((l) => l.visible);
     const mt = $("mt");
     if (!vis.length) { mt.innerHTML = "<tr><td>" + t("noVisible") + "</td></tr>"; $("pt").innerHTML = mt.innerHTML; $("fft").innerHTML = mt.innerHTML; return; }
-    let h = "<tr><th>" + t("axisLog") + "</th><th>Peak</th><th>Overshoot</th><th>Delay</th><th>Rise</th><th>Settling</th><th>N</th><th>" + t("read") + "</th></tr>";
+    let h = "<tr><th>" + t("axisLog") + "</th><th>Peak</th><th>Overshoot</th><th>Delay</th><th>Rise</th><th>Settling</th><th>Steady</th><th>N</th><th>" + t("read") + "</th></tr>";
     for (let a = 0; a < 3; a++) {
       vis.forEach((l, i) => {
         const ax = l.axes[a], m = state.rng === "high" ? ax.mHigh : ax.m;
         h += "<tr>" + (i === 0 ? "" : "") + '<td>' + (i === 0 ? '<span class="axis-l" style="font:700 12px var(--f-display);letter-spacing:.08em;text-transform:uppercase;color:var(--muted);display:inline-block;width:52px">' + AX[a] + "</span>" : '<span style="display:inline-block;width:52px"></span>') +
           '<span class="dot" style="background:' + l.color + '"></span>' + esc(short(l)) + "</td>" +
-          (m ? "<td>" + fmt(m.peak, 2) + "</td><td>" + fmt(m.overshoot, 0) + " %</td><td>" + fmt(m.delay, 1) + " ms</td><td>" + fmt(m.rise, 1) + " ms</td><td>" + fmt(m.settling, 0) + " ms</td>"
-             : '<td colspan="5">' + t("noInput") + "</td>") +
+          (m ? "<td>" + fmt(m.peak, 2) + "</td><td>" + fmt(m.overshoot, 0) + " %</td><td>" + fmt(m.delay, 1) + " ms</td><td>" + fmt(m.rise, 1) + " ms</td><td>" + fmt(m.settling, 0) + " ms</td><td>" + fmt(m.steady, 2) + "</td>"
+             : '<td colspan="6">' + t("noInput") + "</td>") +
           "<td>" + nOf(l, a) + "</td><td>" + (m ? verdict(m.peak) : "") + "</td></tr>";
       });
     }
@@ -1060,8 +1095,9 @@ self.onmessage = (e) => {
         if (!f) h += '<td colspan="4">' + t("ffNoData") + "</td>";
         else if (f.verdict === "noSetpoint") h += '<td colspan="4">' + t("ffNoSet") + "</td>";
         else if (f.verdict === "none") h += '<td colspan="4">' + t("ffNone") + "</td>";
+        else if (f.verdict === "noTrack") h += '<td colspan="4">' + t("ffNoTrack") + "</td>";
         else h += "<td>" + fmt(f.lagMs, 1) + " ms</td><td>" + (f.overshoot == null ? "–" : fmt(f.overshoot, 0) + " %") + "</td><td>" + f.events + "</td><td>" +
-          (f.verdict === "few" ? t("ffFew") : ffChip(f.verdict)) + "</td>";
+          (f.verdict === "few" ? t("ffFew") : f.verdict === "unclear" ? t("ffUnclear") : ffChip(f.verdict)) + "</td>";
         h += "</tr>";
       });
     }
