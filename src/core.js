@@ -409,7 +409,7 @@
   // ---------- feedforward check ----------
   // Looks only at fast stick moves. Lag = how far the gyro trails the setpoint (best time shift).
   // Overshoot = how far the gyro goes past the setpoint right after a fast move reaches its new rate.
-  const FF = { minSlope: 3000, minRate: 30, minPlateau: 200, maxLagMs: 40, minLagMs: -10, lagLow: 3, lagHigh: 12, over: 12, minEvents: 5, minFastS: 0.25 };
+  const FF = { minSlope: 3000, minRate: 30, minPlateau: 200, maxLagMs: 40, minLagMs: -10, lagLow: 3, lagHigh: 12, over: 12, minEvents: 5, minFastS: 0.25, minTrack: 0.4 };
 
   function ffAxis(sp, gy, dt, bad) {
     const n = sp.length, ms = (x) => Math.max(1, Math.round(x / 1000 / dt));
@@ -433,6 +433,11 @@
       for (let i = 0; i < n; i++) if (fast[i]) { const d = gy[i + L] - sp[i]; e += d * d; }
       if (e < best) { best = e; lag = L; }
     }
+    // does the gyro follow the stick at all? (least-squares gain gyro/setpoint over fast moves)
+    let gs = 0, ss = 0;
+    for (let i = 0; i < n; i++) if (fast[i]) { gs += gy[i + lag] * sp[i]; ss += sp[i] * sp[i]; }
+    const track = ss ? gs / ss : 0;
+    const lagPinned = lag === lagMin || lag === lagMax; // best shift sits on the search limit: no real match
     // overshoot after each fast move away from zero that settles on a new rate
     const overs = [];
     const hold = ms(20), look = ms(60);
@@ -444,18 +449,21 @@
       if (Math.abs(P) < FF.minPlateau || Math.abs(P - sp[e]) > 0.1 * Math.abs(P) || !clean(e, e + look)) continue;
       let mx = -Infinity;
       for (let j = e; j <= Math.min(n - 1, e + look); j++) mx = Math.max(mx, Math.sign(P) * gy[j]);
-      overs.push((mx / Math.abs(P) - 1) * 100);
+      const o = (mx / Math.abs(P) - 1) * 100;
+      if (o > -50) overs.push(o); // gyro never got near the new rate: not an overshoot sample
     }
     overs.sort((a, b) => a - b);
     const over = overs.length ? overs[overs.length >> 1] : null;
     const lagMs = +(lag * dt * 1000).toFixed(1);
     let verdict;
-    if (overs.length < FF.minEvents) verdict = lagMs > FF.lagHigh ? "low" : "few";
+    if (track < FF.minTrack) verdict = "noTrack";
+    else if (lagPinned) verdict = "unclear";
+    else if (overs.length < FF.minEvents) verdict = lagMs > FF.lagHigh ? "low" : "few";
     else if (lagMs < 0 || (over > FF.over && lagMs <= FF.lagLow)) verdict = "high"; // gyro ahead of the stick
     else if (lagMs > FF.lagHigh) verdict = "low";
     else if (over > FF.over) verdict = "over";
     else verdict = "good";
-    return { verdict, lagMs, overshoot: over == null ? null : +over.toFixed(1), events: overs.length, fastS: +(nFast * dt).toFixed(2) };
+    return { verdict, lagMs, track: +track.toFixed(2), overshoot: over == null ? null : +over.toFixed(1), events: overs.length, fastS: +(nFast * dt).toFixed(2) };
   }
 
   root.GGStep = { loadLogs, analyze, CFG, HEALTH, FF, ffAxis };
