@@ -57,6 +57,12 @@
     const fF = [0, 1, 2].map((a) => need("axisF[" + a + "]"));
     const hasTerms = fF[0] >= 0 && fP[0] >= 0;
     const fThr = need("rcCommand[3]");
+    // optional fields for Noise Lab: unfiltered gyro, D-term output, per-motor eRPM (bidirectional DShot)
+    const fUnf = [0, 1, 2].map((a) => need("gyroUnfilt[" + a + "]"));
+    const fD = [0, 1, 2].map((a) => need("axisD[" + a + "]"));
+    const fErpm = [];
+    for (let m = 0; m < 8 && idx["eRPM[" + m + "]"] !== undefined; m++) fErpm.push(idx["eRPM[" + m + "]"]);
+    const opt = fUnf.concat(fD, fErpm);
     if (fTime < 0 || fGyro[0] < 0) throw new Error("Log has no gyro data");
     const hasSet = fSet[0] >= 0;
     if (!hasSet && fP[0] < 0) throw new Error("Log has no setpoint or P-term fields");
@@ -66,6 +72,7 @@
     let g = [0, 1, 2].map(() => new Float32Array(cap));
     let s = [0, 1, 2].map(() => new Float32Array(cap));
     let th = new Float32Array(cap);
+    let ox = opt.map((f) => (f >= 0 ? new Float32Array(cap) : null));
     let pt = hasTerms ? [0, 1, 2].map(() => new Float32Array(cap)) : null;
     let ft = hasTerms ? [0, 1, 2].map(() => new Float32Array(cap)) : null;
     const grow = () => {
@@ -76,6 +83,7 @@
       const nth = new Float32Array(cap); nth.set(th); th = nth;
       const g2 = (arr) => arr && arr.map((a) => { const b = new Float32Array(cap); b.set(a); return b; });
       pt = g2(pt); ft = g2(ft);
+      ox = ox.map((a) => { if (!a) return null; const b = new Float32Array(cap); b.set(a); return b; });
     };
     const scale = sc.blackbox_high_resolution > 0 ? 10 : 1;
     const pGain = [sc.rollPID, sc.pitchPID, sc.yawPID].map((p) => (p && p[0]) || 1);
@@ -95,6 +103,7 @@
         if (hasTerms) { pt[a][n] = frame[fP[a]]; ft[a][n] = fF[a] >= 0 ? frame[fF[a]] : 0; }
       }
       th[n] = fThr >= 0 ? frame[fThr] : 0;
+      for (let k = 0; k < opt.length; k++) if (ox[k]) ox[k][n] = frame[opt[k]];
       n++;
     };
     parser.parseLogData(false);
@@ -118,6 +127,12 @@
       setpointSource: hasSet ? "setpoint" : "reconstructed (gyro + P-term)",
     };
     const time = t.subarray(0, n);
+    const cut = (a, sc2) => { if (!a) return null; const b = a.subarray(0, n); if (sc2 !== 1) for (let i = 0; i < n; i++) b[i] /= sc2; return b; };
+    const extra = {
+      gyroUnf: [0, 1, 2].map((a) => cut(ox[a], scale)),
+      dterm: [0, 1, 2].map((a) => cut(ox[3 + a], 1)),
+      erpm: fErpm.map((_, m) => cut(ox[6 + m], 1)),
+    };
     const health = logHealth(time, parser.stats, invalid, backwards);
     return {
       index, header: hdr,
@@ -126,6 +141,7 @@
       pterm: pt && pt.map((a) => a.subarray(0, n)), fterm: ft && ft.map((a) => a.subarray(0, n)),
       duration: (t[n - 1] - t[0]) / 1e6,
       health, gapThr: health.gapThr,
+      extra, raw,
     };
   }
 
@@ -515,5 +531,5 @@
     return { verdict, lagMs, track: +track.toFixed(2), share: share == null ? null : +share.toFixed(2), overshoot: over == null ? null : +over.toFixed(1), events: overs.length, fastS: +(nFast * dt).toFixed(2) };
   }
 
-  root.GGStep = { loadLogs, analyze, CFG, HEALTH, FF, ffAxis };
+  root.GGStep = { loadLogs, analyze, CFG, HEALTH, FF, ffAxis, fft };
 })(typeof window !== "undefined" ? window : globalThis);

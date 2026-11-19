@@ -145,6 +145,47 @@ footer a { color: var(--fg); }
 .example-banner { font-size: 12.5px; color: var(--muted); background: var(--panel-2); border: 1px solid var(--line); border-radius: 8px; padding: 8px 12px; }
 .example-banner b { color: var(--fg); }
 @media (max-width: 600px) { .scope canvas { height: 260px; } }
+
+/* tool switcher: two cards under the header, each with a one-line English description */
+.tools { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 10px; margin-top: 16px; }
+.tools a { display: block; text-decoration: none; color: var(--muted); background: var(--panel); border: 1px solid var(--line);
+  border-radius: 10px; padding: 10px 14px; direction: ltr; text-align: left; }
+.tools a b { display: block; font: 700 15px var(--f-display); letter-spacing: .06em; text-transform: uppercase; color: var(--fg); }
+.tools a small { display: block; font-size: 12.5px; line-height: 1.4; margin-top: 2px; }
+.tools a:hover { border-color: var(--muted); }
+.tools a[aria-current="page"] { border-color: var(--accent); box-shadow: inset 0 -3px 0 var(--accent); }
+.tools a[aria-current="page"] b { color: var(--accent); }
+.tools a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+@media (max-width: 600px) { .tools { grid-template-columns: minmax(0,1fr); } }
+
+/* Noise Lab */
+.sel { display: inline-flex; gap: 8px; align-items: center; font-size: 13px; color: var(--muted); }
+.sel select { background: var(--panel); color: var(--fg); border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px;
+  font: 12.5px var(--f-mono); max-width: 260px; unicode-bidi: plaintext; }
+.sel select:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.nl-info { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+.nl-info .pill { font-size: 12.5px; border: 1px solid var(--line); background: var(--panel); border-radius: 8px; padding: 6px 10px; color: var(--muted); }
+.nl-info .pill b { font: 600 12px var(--f-display); letter-spacing: .05em; text-transform: uppercase; color: var(--fg); margin-inline-end: 6px; }
+.nl-info .pill.warn { border-color: var(--warn); } .nl-info .pill.warn b { color: var(--warn); }
+.nl-info .pill.good b { color: var(--good); }
+.nl-info .pill .v { unicode-bidi: plaintext; }
+#wrap.tab-noise .log.off { opacity: 1; }
+#wrap.tab-noise .log { cursor: pointer; }
+#wrap.tab-noise .log.pick { border-color: var(--accent); box-shadow: inset 3px 0 0 var(--accent); }
+#wrap.tab-noise .log .meta .hid { display: none; }
+.pair { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 10px; margin-top: 6px; direction: ltr; }
+[dir="rtl"] .pair figcaption { direction: rtl; text-align: right; }
+@media (max-width: 700px) { .pair { grid-template-columns: minmax(0,1fr); } }
+.pair figure { margin: 0; min-width: 0; }
+.pair figcaption { font-size: 12px; color: var(--muted); unicode-bidi: plaintext; }
+.pair figcaption b { color: var(--fg); font-weight: 600; }
+.scope .pair canvas { height: 250px; margin-top: 4px; }
+.nl-legend { display: flex; flex-wrap: wrap; gap: 8px 20px; align-items: center; margin-top: 12px; font-size: 12.5px; color: var(--muted); }
+.nl-legend .bar { width: 160px; height: 10px; border-radius: 3px; border: 1px solid var(--line); direction: ltr; }
+.nl-legend .ends { display: inline-flex; gap: 8px; align-items: center; }
+.nl-legend .line { display: inline-block; width: 22px; height: 0; border-top: 2.5px solid var(--accent); vertical-align: middle; margin-inline-end: 6px; }
+.nl-empty { background: var(--panel); border: 1px dashed var(--line); border-radius: 10px; padding: 26px 18px; text-align: center; color: var(--muted); margin-top: 12px; }
+.nl-empty b { display: block; color: var(--fg); font: 600 15px var(--f-display); margin-bottom: 4px; }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
 </style>
 
@@ -156,14 +197,18 @@ footer a { color: var(--fg); }
       <circle cx="17.5" cy="18.5" r="1.4" fill="var(--bg)"/><circle cx="22.5" cy="18.5" r="1.4" fill="var(--bg)"/>
     </svg>
     <div class="brand">
-      <h1>GyroGhost <span>Step Response</span></h1>
-      <p data-i18n="tagline"></p>
+      <h1>GyroGhost <span id="toolName">Step Response</span></h1>
+      <p id="tagline" data-i18n="tagline"></p>
     </div>
     <div class="spacer"></div>
     <button class="btn" id="langBtn" type="button" lang="ar"></button>
     <button class="btn primary" id="openBtn" type="button" data-i18n="open"></button>
     <input type="file" id="file" accept=".bbl,.bfl,.txt,.BBL,.BFL" multiple hidden>
   </header>
+  <nav class="tools" aria-label="Tools">
+    <a href="#step-response" data-tab="step"><b>Step Response</b><small>See how your quad reacts to stick input and whether your PIDs are tuned.</small></a>
+    <a href="#noise-lab" data-tab="noise"><b>Noise Lab</b><small>See where your noise comes from and whether your filters are catching it.</small></a>
+  </nav>
 
   <div class="bench">
     <aside class="rack">
@@ -177,7 +222,7 @@ footer a { color: var(--fg); }
       <div class="logs" id="logs"></div>
     </aside>
 
-    <main style="min-width:0">
+    <main style="min-width:0" id="stepView">
       <div class="ctrls">
         <div class="seg" role="group" aria-label="Time window">
           <button type="button" data-win="150" aria-pressed="false">0–150 ms</button>
@@ -226,15 +271,57 @@ footer a { color: var(--fg); }
         </div>
       </section>
     </main>
+    <main style="min-width:0" id="noiseView" hidden>
+      <div class="ctrls">
+        <label class="sel"><span data-i18n="nlLog"></span> <select id="nlLog"></select></label>
+        <div class="seg" role="group" aria-label="Signal">
+          <button type="button" data-sig="gyro" aria-pressed="true">Gyro</button>
+          <button type="button" data-sig="dterm" aria-pressed="false">D-term</button>
+        </div>
+        <div class="seg" role="group" aria-label="Frequency range">
+          <button type="button" data-fmax="500" aria-pressed="false">0–500 Hz</button>
+          <button type="button" data-fmax="1000" aria-pressed="true">0–1000 Hz</button>
+          <button type="button" data-fmax="0" aria-pressed="false">Max</button>
+        </div>
+        <label class="chk"><input type="checkbox" id="harmChk" checked> <span data-i18n="nlHarm"></span></label>
+      </div>
+      <div class="nl-info" id="nlInfo"></div>
+      <div class="nl-empty" id="nlEmpty" hidden></div>
+      <div id="nlBody">
+        <div class="nl-legend">
+          <span class="ends"><span data-i18n="nlQuiet"></span><canvas class="bar" id="nlBar" width="160" height="10"></canvas><span data-i18n="nlLoud"></span></span>
+          <span><span class="line"></span><span data-i18n="nlLineLeg"></span></span>
+        </div>
+        <div class="scopes">
+          <div class="scope"><h2>Roll <small id="nlSub0"></small></h2><div class="pair"><figure><figcaption class="capA"></figcaption><canvas id="nlA0"></canvas></figure><figure><figcaption class="capB"></figcaption><canvas id="nlB0"></canvas></figure></div><div class="readout" id="nlRo0"></div></div>
+          <div class="scope"><h2>Pitch <small id="nlSub1"></small></h2><div class="pair"><figure><figcaption class="capA"></figcaption><canvas id="nlA1"></canvas></figure><figure><figcaption class="capB"></figcaption><canvas id="nlB1"></canvas></figure></div><div class="readout" id="nlRo1"></div></div>
+          <div class="scope"><h2>Yaw <small id="nlSub2"></small></h2><div class="pair"><figure><figcaption class="capA"></figcaption><canvas id="nlA2"></canvas></figure><figure><figcaption class="capB"></figcaption><canvas id="nlB2"></canvas></figure></div><div class="readout" id="nlRo2"></div></div>
+        </div>
+        <section class="tables">
+          <div>
+            <h3 data-i18n="nlFindH"></h3>
+            <div class="recs" id="nlFind"></div>
+            <p class="note" data-i18n="nlFindN"></p>
+          </div>
+          <div class="howto">
+            <div><b data-i18n="nlH1t"></b><p data-i18n="nlH1"></p></div>
+            <div><b data-i18n="nlH2t"></b><p data-i18n="nlH2"></p></div>
+            <div><b data-i18n="nlH3t"></b><p data-i18n="nlH3"></p></div>
+            <div><b data-i18n="nlH4t"></b><p data-i18n="nlH4"></p></div>
+          </div>
+        </section>
+      </div>
+    </main>
   </div>
 
-  <footer><span data-i18n="footer"></span> · <a href="https://github.com/GyroGhost/step-response" target="_blank" rel="noopener">GitHub</a></footer>
+  <footer><span id="footerTxt" data-i18n="footer"></span> · <a href="https://github.com/GyroGhost/step-response" target="_blank" rel="noopener">GitHub</a></footer>
 </div>
 
 <script type="text/plain" id="worker-src">
 self.window = self;
 /*PARSER*/
 /*CORE*/
+/*NOISE*/
 const store = new Map();
 function pack(r) {
   return r.axes.map((a) => {
@@ -260,6 +347,11 @@ self.onmessage = (e) => {
       const l = store.get(msg.id);
       const r = GGStep.analyze(l, { start: msg.start, end: msg.end });
       self.postMessage({ type: "trimmed", id: msg.id, axes: pack(r), gapWin: r.gapWin, totalWin: r.axes[0].total });
+    } else if (msg.type === "noise") {
+      const l = store.get(msg.id);
+      if (!l) return;
+      const r = GGNoise.analyze(l, { start: msg.start, end: msg.end });
+      self.postMessage({ type: "noise", id: msg.id, key: msg.key, data: r });
     } else if (msg.type === "drop") { store.delete(msg.id); }
   } catch (err) {
     self.postMessage({ type: "error", reqId: msg.reqId, name: msg.name, error: String(err && err.message || err) });
@@ -272,7 +364,7 @@ self.onmessage = (e) => {
   "use strict";
   const PALETTE = ["#e5383b", "#4ea8de", "#f2c14e", "#5fd39a", "#c77dff", "#ff8c42", "#9aa5b1", "#ff5d8f"];
   const AX = ["Roll", "Pitch", "Yaw"];
-  const state = { logs: [], win: 300, rng: "low", example: true, hover: null, band: true };
+  const state = { logs: [], win: 300, rng: "low", example: true, hover: null, band: true, tab: "step" };
   let colorIdx = 0, reqSeq = 0;
 
   const I18N = {
@@ -330,6 +422,37 @@ self.onmessage = (e) => {
       hFix: "Blackbox dropped data, so the gyro trace has fake jumps. Windows that touch a gap are left out. Erase the flash, lower the blackbox rate (2 kHz or less on onboard flash) or use a faster SD card, then fly again.",
       hFixRate: "Very low logging rate, so fast moves aren't captured well. Raise the blackbox rate if your flash can keep up.",
       healthStatus: (n) => "⚠ " + n + " with logging artefacts — see the log card.",
+      taglineNoise: "Throttle vs frequency noise maps for Betaflight blackbox logs, with motor RPM lines from eRPM. Runs in your browser — logs never leave your device.",
+      nlLog: "Log", nlHarm: "Motor lines", nlQuiet: "Quiet", nlLoud: "Loud",
+      nlLineLeg: "Motor RPM from eRPM: 1×, 2×, 3× harmonics",
+      capGyroA: "<b>Before filters</b> · gyroUnfilt", capGyroB: "<b>After filters</b> · what the PIDs see",
+      capDA: "<b>D-term input</b> · before D-term filters", capDB: "<b>D-term output</b> · axisD",
+      nlNoUnf: "No gyroUnfilt in this log", nlNoD: "No D-term on this axis (D = 0)", nlNoRows: "No data",
+      nlEmptyEx: "<b>Open your own logs</b>The example only has step response curves. Open a .BBL file to see its noise maps.",
+      nlEmptyNone: "<b>No logs yet</b>Open one or more .BBL files.",
+      nlBusy: "Building noise maps…",
+      pErpm: "eRPM", pErpmYes: (m, p) => m + " motors · " + p + " poles", pErpmNo: "not in this log — turn on Bidirectional DShot to see motor lines", pErpmNoPoles: "found, but motor_poles is missing",
+      pRpm: "RPM filter", pRpmOn: (h, min) => h + " harmonics · min " + min + " Hz", pRpmOff: "off",
+      pRate: "Logging rate", pRateV: (fs) => fs + " Hz · shows up to " + Math.floor(fs / 2) + " Hz", pRateLow: (fs) => fs + " Hz · too low, noise above " + Math.floor(fs / 2) + " Hz can't be seen",
+      pMotor: "Motor frequency", pMotorV: (a, b) => a + "–" + b + " Hz",
+      nlFindH: "What the noise says",
+      nlFindN: "Based on the loudest peak above 80 Hz on each axis. A starting point — always look at the maps too.",
+      fClean: "No clear noise peak on this axis.",
+      fMotor: (hz, h, thr) => "Loudest noise around " + hz + " Hz (strongest near " + thr + "% throttle) follows the motors (" + h + "× motor RPM). This is what the RPM filter is for.",
+      fOther: (hz, thr) => "Loudest noise around " + hz + " Hz (strongest near " + thr + "% throttle) does NOT follow the motors. Usually the frame, a loose part, props or FC mounting.",
+      fUnknown: (hz, thr) => "Loudest noise around " + hz + " Hz (strongest near " + thr + "% throttle). There's no eRPM in this log, so we can't tell if it comes from the motors.",
+      fCutGood: (c) => "Filters take it down " + c + " dB. Good.",
+      fCutOk: (c) => "Filters take it down " + c + " dB.",
+      fCutPoor: (c) => "Filters only take it down " + c + " dB, so most of it reaches the PIDs.",
+      fRpmOff: "The RPM filter is off in this log. Turn it on (needs Bidirectional DShot).",
+      fLowRate: "Logging rate is low, so higher noise may be hidden. Raise the blackbox rate if your flash can keep up.",
+      nlH1t: "Line that bends with throttle", nlH1: "Noise that moves with motor speed. It should sit on the red lines, and the RPM filter is what removes it.",
+      nlH2t: "Straight vertical band", nlH2: "Noise at the same frequency at every throttle: frame resonance, a loose part or a bent prop. Filters only hide it — fix the hardware first.",
+      nlH3t: "Left vs right", nlH3: "The right map is what the PID loop actually gets. The darker it is next to the left one, the more the filters are removing.",
+      nlH4t: "Bright at the far left", nlH4: "Below about 100 Hz is mostly stick moves and propwash, not filter noise. Don't try to fix it with filters.",
+      footerNoise: "Noise maps: Hann-windowed FFT over about 0.25 s windows, averaged per 2% throttle. Motor frequency = eRPM × 100 / 60 / (motor poles / 2), same as Betaflight. Idea inspired by nerdCopter's blackbox_analyzer. Log decoding uses the Betaflight Blackbox Explorer parser (GPL-3.0).",
+      roFreq: "Freq", roThr: "Throttle", roBefore: "Before", roAfter: "After", roCut: "Cut", roHarm: (h) => "≈ " + h + "× motor",
+
     },
     ar: {
       recH: "التوصيات", recN: "هذه نقاط بداية تقريبية وليست قواعد ثابتة. غيّر شيئاً واحداً في كل مرة بحوالي 10%، ثم أعد التجربة بنفس الحركات وقارن السجلين هنا.",
@@ -385,6 +508,37 @@ self.onmessage = (e) => {
       hFix: "فقد الـ Blackbox جزءاً من البيانات، لذلك يظهر في خط الجايرو قفزات غير حقيقية. تم استبعاد المقاطع الناقصة من التحليل. امسح الذاكرة واخفض سرعة التسجيل، أو استخدم بطاقة ذاكرة أسرع، ثم أعد التجربة.",
       hFixRate: "سرعة التسجيل منخفضة جداً، لذلك لا تُقرأ الحركات السريعة بدقة. ارفعها إذا كانت الذاكرة تتحمل.",
       healthStatus: (n) => "⚠ يوجد " + n + " سجل فيه أخطاء تسجيل، راجع بطاقة السجل.",
+      taglineNoise: "خرائط الضوضاء مقابل الـ Throttle لسجلات Betaflight، مع خطوط سرعة المحركات من الـ eRPM. تعمل داخل المتصفح، وملفاتك لا تغادر جهازك.",
+      nlLog: "السجل", nlHarm: "خطوط المحركات", nlQuiet: "هادئ", nlLoud: "ضوضاء عالية",
+      nlLineLeg: "سرعة المحركات من الـ eRPM: التردد 1× و 2× و 3×",
+      capGyroA: "<b>قبل الفلاتر</b> · gyroUnfilt", capGyroB: "<b>بعد الفلاتر</b> · ما يصل إلى الـ PID",
+      capDA: "<b>دخل الـ D-term</b> · قبل فلاتر الـ D-term", capDB: "<b>خرج الـ D-term</b> · axisD",
+      nlNoUnf: "لا يوجد gyroUnfilt في هذا السجل", nlNoD: "لا يوجد D-term على هذا المحور (D = 0)", nlNoRows: "لا توجد بيانات",
+      nlEmptyEx: "<b>افتح سجلاتك</b>المثال يحتوي على منحنيات الـ Step Response فقط. افتح ملف BBL لترى خرائط الضوضاء.",
+      nlEmptyNone: "<b>لا توجد سجلات</b>افتح ملف BBL أو أكثر.",
+      nlBusy: "جارٍ تجهيز خرائط الضوضاء…",
+      pErpm: "eRPM", pErpmYes: (m, p) => "‎" + m + " motors · " + p + " poles", pErpmNo: "غير موجود في السجل، فعّل Bidirectional DShot لتظهر خطوط المحركات", pErpmNoPoles: "موجود، لكن قيمة motor_poles غير موجودة",
+      pRpm: "RPM filter", pRpmOn: (h, min) => "‎" + h + " harmonics · min " + min + " Hz", pRpmOff: "مطفأ",
+      pRate: "سرعة التسجيل", pRateV: (fs) => "‎" + fs + " Hz · up to " + Math.floor(fs / 2) + " Hz", pRateLow: (fs) => "‎" + fs + " Hz · منخفضة، لا تظهر الضوضاء فوق " + Math.floor(fs / 2) + " Hz",
+      pMotor: "تردد المحركات", pMotorV: (a, b) => "‎" + a + "–" + b + " Hz",
+      nlFindH: "ماذا تقول الضوضاء",
+      nlFindN: "مبني على أعلى قمة ضوضاء فوق 80 Hz في كل محور. هذه نقطة بداية، فانظر إلى الخرائط أيضاً.",
+      fClean: "لا توجد قمة ضوضاء واضحة على هذا المحور.",
+      fMotor: (hz, h, thr) => "أعلى ضوضاء عند حوالي " + hz + " Hz (أقواها قرب " + thr + "% Throttle) وتتبع سرعة المحركات (" + h + "× سرعة المحرك). هذه الضوضاء يعالجها الـ RPM filter.",
+      fOther: (hz, thr) => "أعلى ضوضاء عند حوالي " + hz + " Hz (أقواها قرب " + thr + "% Throttle) ولا تتبع سرعة المحركات. سببها غالباً الفريم أو قطعة مفكوكة أو المراوح أو تثبيت الـ FC.",
+      fUnknown: (hz, thr) => "أعلى ضوضاء عند حوالي " + hz + " Hz (أقواها قرب " + thr + "% Throttle). لا يوجد eRPM في السجل، لذلك لا يمكن معرفة إن كانت من المحركات.",
+      fCutGood: (c) => "الفلاتر تخفضها " + c + " dB، وهذا جيد.",
+      fCutOk: (c) => "الفلاتر تخفضها " + c + " dB.",
+      fCutPoor: (c) => "الفلاتر تخفضها " + c + " dB فقط، لذلك يصل أغلبها إلى الـ PID.",
+      fRpmOff: "الـ RPM filter مطفأ في هذا السجل. فعّله (يحتاج Bidirectional DShot).",
+      fLowRate: "سرعة التسجيل منخفضة، لذلك قد تكون هناك ضوضاء أعلى لا تظهر. ارفع سرعة الـ Blackbox إذا كانت الذاكرة تتحمل.",
+      nlH1t: "خط ينحني مع الـ Throttle", nlH1: "ضوضاء تتغير مع سرعة المحركات. يجب أن تكون فوق الخطوط الحمراء، والـ RPM filter هو الذي يزيلها.",
+      nlH2t: "شريط عمودي مستقيم", nlH2: "ضوضاء عند نفس التردد في كل مستويات الـ Throttle: رنين في الفريم أو قطعة مفكوكة أو مروحة معوجة. الفلاتر تخفيها فقط، فأصلح القطع أولاً.",
+      nlH3t: "اليسار مقابل اليمين", nlH3: "الخريطة اليمنى هي ما يصل فعلاً إلى الـ PID. كلما كانت أغمق من اليسرى، كانت الفلاتر تزيل أكثر.",
+      nlH4t: "لون فاتح في أقصى اليسار", nlH4: "ما تحت 100 Hz تقريباً سببه حركة العصا والـ propwash، وليس ضوضاء تحتاج فلاتر. لا تحاول إصلاحه بالفلاتر.",
+      footerNoise: "خرائط الضوضاء: FFT مع نافذة Hann على مقاطع مدة كل منها 0.25 ثانية تقريباً، بمتوسط لكل 2% من الـ Throttle. تردد المحرك = eRPM × 100 ÷ 60 ÷ (عدد الأقطاب ÷ 2)، بنفس طريقة Betaflight. الفكرة مستوحاة من أداة blackbox_analyzer من nerdCopter. قراءة الملفات تتم بكود Blackbox Explorer برخصة GPL-3.0.",
+      roFreq: "Freq", roThr: "Throttle", roBefore: "Before", roAfter: "After", roCut: "Cut", roHarm: (h) => "≈ " + h + "× motor",
+
     },
   };
   let lang = "en";
@@ -399,7 +553,7 @@ self.onmessage = (e) => {
     if (lang === "ar") w.querySelectorAll(".note, .howto div, .example-banner, footer > span, .drop small").forEach(markLatin);
   }
   // Arabic explanations: colour every English term red and isolate it, so mixed RTL/LTR text stays in order
-  const LATIN = /(?:\d+(?:\.\d+)?)?[A-Za-z][A-Za-z0-9]*(?:[-/+.][A-Za-z0-9]+)*(?:\s+[A-Za-z][A-Za-z0-9]*(?:[-/+.][A-Za-z0-9]+)*)*/g;
+  const LATIN = /(?:\d+(?:\.\d+)?)?[A-Za-z][A-Za-z0-9_]*(?:[-/+.][A-Za-z0-9_]+)*(?:\s+[A-Za-z][A-Za-z0-9_]*(?:[-/+.][A-Za-z0-9_]+)*)*/g;
   function markLatin(root) {
     const walk = document.createTreeWalker(root, NodeFilter.SHOW_TEXT), nodes = [];
     while (walk.nextNode()) { const n = walk.currentNode; if (!n.parentElement.closest("em, a, .rec b")) nodes.push(n); }
@@ -464,6 +618,8 @@ self.onmessage = (e) => {
     } else if (m.type === "trimmed") {
       const l = state.logs.find((x) => x.id === m.id);
       if (l) { l.axes = m.axes; l.gapWin = m.gapWin; l.totalWin = m.totalWin; setStatus(t("reanalysed", short(l))); render(); }
+    } else if (m.type === "noise") {
+      onNoise(m);
     } else if (m.type === "error") {
       setStatus((m.name || "Log") + ": " + m.error, true);
     }
@@ -487,10 +643,14 @@ self.onmessage = (e) => {
         (l.thin ? '' : '') +
         (l.example ? "<span></span>" : '<button class="x" type="button" aria-label="' + t("remove") + '">×</button>') +
         '<div class="meta">' + esc((h.craft ? h.craft + " · " : "") + (h.firmware || "")) + "<br>R " + pidStr(h.roll) + " · P " + pidStr(h.pitch) + " · Y " + pidStr(h.yaw) +
-        "<br>" + fmt(l.duration, 0) + " s · " + l.rate + " " + t("analysed") + (l.thin ? "<br>" + t("hidden") : "") + "</div>" +
+        "<br>" + fmt(l.duration, 0) + " s · " + l.rate + " " + t("analysed") + (l.thin ? '<span class="hid"><br>' + t("hidden") + "</span>" : "") + "</div>" +
         healthHtml(l) +
         (l.example ? "" : '<div class="trim">' + t("useFrom") + ' <input type="number" min="0" step="1" value="' + (l.tStart ?? "") + '" placeholder="0" aria-label="Start second" data-k="tStart"> ' + t("to") + ' <input type="number" min="0" step="1" value="' + (l.tEnd ?? "") + '" placeholder="' + Math.floor(l.duration) + '" aria-label="End second" data-k="tEnd"> ' + t("sec") + '</div>');
-      el.querySelector(".swatch").onclick = () => { l.visible = !l.visible; render(); };
+      el.querySelector(".swatch").onclick = (ev) => { if (state.tab === "noise") return; ev.stopPropagation(); l.visible = !l.visible; render(); };
+      if (state.tab === "noise" && !l.example) {
+        if (l.id === nl.id) el.classList.add("pick");
+        el.onclick = (ev) => { if (ev.target.closest("input, .x")) return; if (nl.id !== l.id) { nl.id = l.id; nl.imgs = null; nl.hover = null; render(); } };
+      }
       const x = el.querySelector(".x");
       if (x) x.onclick = () => { state.logs = state.logs.filter((y) => y !== l); worker && worker.postMessage({ type: "drop", id: l.id }); render(); };
       el.querySelectorAll(".trim input").forEach((inp) => inp.onchange = () => {
@@ -752,7 +912,263 @@ self.onmessage = (e) => {
   }
   const short = (l) => l.file.replace(/\.(bbl|bfl|txt)$/i, "") + " #" + (l.logIndex + 1);
 
-  function render() { applyLang(); renderRack(); renderTables(); drawAll(); }
+  // ---------- Noise Lab ----------
+  const VIRIDIS = [[68, 1, 84], [59, 82, 139], [33, 145, 140], [94, 201, 98], [253, 231, 37]];
+  const vir = (x) => {
+    x = Math.max(0, Math.min(1, x)) * (VIRIDIS.length - 1);
+    const i = Math.min(VIRIDIS.length - 2, Math.floor(x)), f = x - i, a = VIRIDIS[i], b = VIRIDIS[i + 1];
+    return [a[0] + (b[0] - a[0]) * f, a[1] + (b[1] - a[1]) * f, a[2] + (b[2] - a[2]) * f];
+  };
+  const nl = { id: null, sig: "gyro", fmax: 1000, harm: true, cache: new Map(), pending: null, imgs: null, hover: null };
+  const noiseKey = (l) => l.id + ":" + (l.tStart ?? "") + ":" + (l.tEnd ?? "");
+  const realLogs = () => state.logs.filter((l) => !l.example);
+  const nlLog = () => realLogs().find((l) => l.id === nl.id);
+  const nlRes = () => { const l = nlLog(); return l ? nl.cache.get(noiseKey(l)) : null; };
+  const NL_PAD = { L: 38, R: 8, T: 6, B: 22 };
+
+  function requestNoise() {
+    const l = nlLog();
+    if (!l || !worker) return;
+    const key = noiseKey(l);
+    if (nl.cache.has(key) || nl.pending === key) return;
+    nl.pending = key;
+    setStatus(t("nlBusy"));
+    worker.postMessage({ type: "noise", id: l.id, key, start: l.tStart, end: l.tEnd });
+  }
+  function onNoise(m) {
+    nl.cache.set(m.key, m.data);
+    if (nl.pending === m.key) { nl.pending = null; setStatus(""); }
+    nl.imgs = null;
+    renderNoise();
+  }
+  // which two maps the current view compares
+  const pairKeys = () => (nl.sig === "gyro" ? ["gyroUnf", "gyro"] : ["dIn", "dOut"]);
+  function view(r) {
+    const nyq = r.fs / 2, fmax = nl.fmax ? Math.min(nl.fmax, nyq) : nyq;
+    return { fmax, FB: Math.min(r.F, Math.ceil(fmax / r.fRes) + 1) };
+  }
+  // offscreen images for each axis pair, sharing one colour scale per axis
+  function prepImages(r) {
+    const { FB } = view(r), [ka, kb] = pairKeys(), TB = r.thrBins;
+    nl.imgs = [0, 1, 2].map((a) => {
+      const A = r.maps[ka][a], B = r.maps[kb][a], vals = [];
+      [A, B].forEach((M) => { if (!M) return; for (let b = 0; b < TB; b++) for (let f = 1; f < FB; f++) { const v = M[b * r.F + f]; if (isFinite(v)) vals.push(v); } });
+      if (!vals.length) return { A: null, B: null };
+      vals.sort((x, y) => x - y);
+      const top = vals[Math.floor(vals.length * 0.995)], bot = top - GGNoiseCfg.rangeDb;
+      const mk = (M) => {
+        if (!M) return null;
+        const c = document.createElement("canvas"); c.width = FB; c.height = TB;
+        const cx = c.getContext("2d"), img = cx.createImageData(FB, TB);
+        for (let b = 0; b < TB; b++) for (let f = 0; f < FB; f++) {
+          const v = M[b * r.F + f], o = ((TB - 1 - b) * FB + f) * 4;
+          if (!isFinite(v)) { img.data[o + 3] = 0; continue; }
+          const [R, G, Bc] = vir((v - bot) / (top - bot));
+          img.data[o] = R; img.data[o + 1] = G; img.data[o + 2] = Bc; img.data[o + 3] = 255;
+        }
+        cx.putImageData(img, 0, 0);
+        return c;
+      };
+      return { A: mk(A), B: mk(B), top, bot };
+    });
+  }
+  const GGNoiseCfg = { rangeDb: 45 };
+
+  function drawHeat(cv, a, side, r) {
+    const dpr = window.devicePixelRatio || 1, W = cv.clientWidth, H = cv.clientHeight;
+    if (!W) return;
+    if (cv.width !== Math.round(W * dpr) || cv.height !== Math.round(H * dpr)) { cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr); }
+    const ctx = cv.getContext("2d");
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, W, H);
+    const { L, R, T, B } = NL_PAD, pw = W - L - R, ph = H - T - B;
+    const { fmax } = view(r);
+    const X = (hz) => L + (hz / fmax) * pw, Y = (thr) => T + ph - (thr / 100) * ph;
+    ctx.fillStyle = css("--panel-2"); ctx.fillRect(L, T, pw, ph);
+    const im = nl.imgs[a] && nl.imgs[a][side];
+    ctx.font = "11px " + css("--f-mono");
+    if (im) {
+      ctx.save(); ctx.beginPath(); ctx.rect(L, T, pw, ph); ctx.clip();
+      ctx.imageSmoothingEnabled = true;
+      const wHz = im.width * r.fRes;
+      ctx.drawImage(im, 0, 0, im.width, im.height, X(-r.fRes / 2), T, (wHz / fmax) * pw, ph);
+      // motor RPM harmonics
+      if (nl.harm && r.info.hasErpm) {
+        const H2 = r.info.rpmH > 0 ? r.info.rpmH : 3, TB = r.thrBins;
+        for (let h = 1; h <= H2; h++) {
+          const pts = [];
+          for (let b = 0; b < TB; b++) pts.push(isFinite(r.motorHz[b]) ? [X(r.motorHz[b] * h), Y(((b + 0.5) / TB) * 100)] : null);
+          [["rgba(0,0,0,.55)", 4.5], [css("--accent"), 2]].forEach(([col, lw]) => {
+            ctx.strokeStyle = col; ctx.lineWidth = lw; ctx.lineJoin = "round"; ctx.beginPath();
+            let pen = false;
+            pts.forEach((p) => { if (!p) { pen = false; return; } pen ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1]); pen = true; });
+            ctx.stroke();
+          });
+          let lastP = null; for (let i = pts.length - 1; i >= 0; i--) if (pts[i]) { lastP = pts[i]; break; }
+          if (lastP && lastP[0] < L + pw - 18) {
+            ctx.fillStyle = "#fff"; ctx.textAlign = "left"; ctx.textBaseline = "bottom";
+            ctx.lineWidth = 3; ctx.strokeStyle = "rgba(0,0,0,.6)"; ctx.strokeText(h + "×", lastP[0] + 4, Math.max(T + 12, lastP[1]));
+            ctx.fillText(h + "×", lastP[0] + 4, Math.max(T + 12, lastP[1]));
+          }
+        }
+      }
+      // hover crosshair
+      if (nl.hover && nl.hover.a === a) {
+        ctx.strokeStyle = "#fff"; ctx.globalAlpha = 0.7; ctx.lineWidth = 1; ctx.setLineDash([3, 3]);
+        const hx = Math.round(X(nl.hover.hz)) + 0.5, hy = Math.round(Y(nl.hover.thr)) + 0.5;
+        ctx.beginPath(); ctx.moveTo(hx, T); ctx.lineTo(hx, T + ph); ctx.moveTo(L, hy); ctx.lineTo(L + pw, hy); ctx.stroke();
+        ctx.setLineDash([]); ctx.globalAlpha = 1;
+      }
+      ctx.restore();
+    } else {
+      ctx.fillStyle = css("--muted"); ctx.textAlign = "center"; ctx.textBaseline = "middle"; ctx.font = "12.5px " + css("--f-body");
+      const k = pairKeys()[side === "A" ? 0 : 1];
+      ctx.fillText(k === "gyroUnf" ? t("nlNoUnf") : k === "dOut" ? t("nlNoD") : t("nlNoRows"), L + pw / 2, T + ph / 2);
+      ctx.font = "11px " + css("--f-mono");
+    }
+    // axes
+    ctx.fillStyle = css("--muted"); ctx.strokeStyle = css("--line"); ctx.lineWidth = 1;
+    ctx.strokeRect(L + 0.5, T + 0.5, pw - 1, ph - 1);
+    ctx.textAlign = "right"; ctx.textBaseline = "middle";
+    for (let v = 0; v <= 100; v += 25) ctx.fillText(v + "%", L - 5, Math.min(T + ph - 5, Math.max(T + 5, Y(v))));
+    let step = fmax <= 500 ? 100 : fmax <= 1000 ? 200 : 500;
+    if (pw < 260) step *= 2;
+    ctx.textAlign = "center"; ctx.textBaseline = "top";
+    for (let hz = 0; hz <= fmax + 1e-6; hz += step) {
+      const x = X(hz);
+      ctx.fillText(hz + (hz + step > fmax ? " Hz" : ""), Math.min(Math.max(x, L + 8), L + pw - 20), T + ph + 5);
+    }
+  }
+
+  function cellAt(r, a, hz, thr) {
+    const [ka, kb] = pairKeys(), f = Math.round(hz / r.fRes), b = Math.min(r.thrBins - 1, Math.floor((thr / 100) * r.thrBins));
+    const get = (k) => { const M = r.maps[k][a]; const v = M && M[b * r.F + f]; return isFinite(v) ? v : null; };
+    let harm = null;
+    if (r.info.hasErpm && isFinite(r.motorHz[b])) for (let h = 1; h <= 4; h++) { const hf = r.motorHz[b] * h; if (Math.abs(hz - hf) <= hf * 0.08) { harm = h; break; } }
+    return { A: get(ka), B: get(kb), harm };
+  }
+  function readout(a, r) {
+    const box = $("nlRo" + a);
+    if (!nl.hover || nl.hover.a !== a) { box.hidden = true; return; }
+    const c = cellAt(r, a, nl.hover.hz, nl.hover.thr);
+    const it = (k, v) => "<span><b>" + k + "</b>" + v + "</span>";
+    box.innerHTML = '<div class="r">' + it(t("roFreq"), Math.round(nl.hover.hz) + " Hz") + it(t("roThr"), Math.round(nl.hover.thr) + "%") +
+      it(t("roBefore"), c.A == null ? "–" : c.A.toFixed(1) + " dB") + it(t("roAfter"), c.B == null ? "–" : c.B.toFixed(1) + " dB") +
+      (c.A != null && c.B != null ? it(t("roCut"), (c.A - c.B).toFixed(1) + " dB") : "") + (c.harm ? '<span style="color:var(--accent)">' + t("roHarm", c.harm) + "</span>" : "") + "</div>";
+    box.hidden = false;
+  }
+  function drawNoise() {
+    const r = nlRes();
+    if (!r || state.tab !== "noise") return;
+    if (!nl.imgs) prepImages(r);
+    for (let a = 0; a < 3; a++) {
+      drawHeat($("nlA" + a), a, "A", r); drawHeat($("nlB" + a), a, "B", r);
+      readout(a, r);
+    }
+  }
+
+  function renderNoise() {
+    // log picker
+    const logs = realLogs(), sel = $("nlLog");
+    if (!logs.some((l) => l.id === nl.id)) { nl.id = logs.length ? logs[logs.length - 1].id : null; nl.imgs = null; nl.hover = null; }
+    sel.innerHTML = logs.map((l) => '<option value="' + esc(l.id) + '"' + (l.id === nl.id ? " selected" : "") + ">" + esc(short(l)) + "</option>").join("");
+    sel.disabled = !logs.length;
+    const empty = $("nlEmpty"), body = $("nlBody"), info = $("nlInfo");
+    if (!logs.length) {
+      empty.innerHTML = t(state.logs.length ? "nlEmptyEx" : "nlEmptyNone"); empty.hidden = false; body.hidden = true; info.innerHTML = ""; return;
+    }
+    const r = nlRes();
+    if (!r) { empty.innerHTML = "<b>" + t("nlBusy") + "</b>"; empty.hidden = false; body.hidden = true; info.innerHTML = ""; if (state.tab === "noise") requestNoise(); return; }
+    empty.hidden = true; body.hidden = false;
+    // captions
+    const caps = nl.sig === "gyro" ? ["capGyroA", "capGyroB"] : ["capDA", "capDB"];
+    document.querySelectorAll("#noiseView .capA").forEach((el) => { el.innerHTML = t(caps[0]); });
+    document.querySelectorAll("#noiseView .capB").forEach((el) => { el.innerHTML = t(caps[1]); });
+    // info pills
+    const I = r.info, pill = (cls, k, v) => '<span class="pill ' + cls + '"><b>' + k + '</b><span class="v">' + esc(v) + "</span></span>";
+    let h = pill(I.hasErpm ? "good" : "warn", t("pErpm"), I.hasErpm ? t("pErpmYes", I.motors, I.poles) : I.motors ? t("pErpmNoPoles") : t("pErpmNo"));
+    if (I.rpmH != null) h += pill(I.rpmH > 0 ? "" : "warn", t("pRpm"), I.rpmH > 0 ? t("pRpmOn", I.rpmH, I.rpmMin ?? "–") : t("pRpmOff"));
+    h += pill(r.fs < 1000 ? "warn" : "", t("pRate"), r.fs < 1000 ? t("pRateLow", r.fs) : t("pRateV", r.fs));
+    if (r.motorRange) h += pill("", t("pMotor"), t("pMotorV", Math.round(r.motorRange[0]), Math.round(r.motorRange[1])));
+    info.innerHTML = h;
+    // findings
+    const items = r.findings.map((f, a) => {
+      if (!f) return "";
+      const lines = [];
+      let cls = "warn";
+      if (f.kind === "clean") { lines.push(t("fClean")); cls = "ok"; }
+      else {
+        lines.push(f.kind === "motor" ? t("fMotor", f.hz, f.harm, f.thr) : f.kind === "other" ? t("fOther", f.hz, f.thr) : t("fUnknown", f.hz, f.thr));
+        if (f.cut != null) {
+          const c = Math.round(f.cut);
+          lines.push(c >= 10 ? t("fCutGood", c) : c >= 4 ? t("fCutOk", c) : t("fCutPoor", c));
+          if (c >= 10 && f.kind !== "other") cls = "ok";
+        }
+        if (f.kind === "motor" && I.rpmH === 0) lines.push(t("fRpmOff"));
+        if (f.kind === "unknown") cls = cls === "ok" ? "ok" : "info";
+      }
+      return '<li class="' + cls + '"><b>' + AX[a] + "</b>" + esc(lines.join(" ")) + "</li>";
+    }).join("");
+    $("nlFind").innerHTML = '<div class="rec"><ul>' + items + (r.fs < 1000 ? '<li class="info"><b>Log</b>' + esc(t("fLowRate")) + "</li>" : "") + "</ul></div>";
+    if (lang === "ar") $("nlFind").querySelectorAll("li").forEach(markLatin);
+    for (let a = 0; a < 3; a++) {
+      const f = r.findings[a];
+      $("nlSub" + a).textContent = f && f.kind !== "clean" ? "peak ≈ " + f.hz + " Hz" : "";
+    }
+    // colour bar
+    const bar = $("nlBar"), bx = bar.getContext("2d");
+    for (let x = 0; x < bar.width; x++) { const [R, G, B] = vir(x / (bar.width - 1)); bx.fillStyle = "rgb(" + R + "," + G + "," + B + ")"; bx.fillRect(x, 0, 1, bar.height); }
+    drawNoise();
+  }
+
+  // hover on the maps: same crosshair on both maps of an axis
+  for (let a = 0; a < 3; a++) ["nlA", "nlB"].forEach((pre) => {
+    const cv = $(pre + a);
+    const move = (ev) => {
+      const r = nlRes(); if (!r) return;
+      const rc = cv.getBoundingClientRect(), { L, R, T, B } = NL_PAD;
+      const fx = (ev.clientX - rc.left - L) / (rc.width - L - R), fy = (ev.clientY - rc.top - T) / (rc.height - T - B);
+      if (fx < 0 || fx > 1 || fy < 0 || fy > 1) { if (nl.hover) { nl.hover = null; drawNoise(); } return; }
+      nl.hover = { a, hz: fx * view(r).fmax, thr: (1 - fy) * 100 };
+      drawNoise();
+    };
+    cv.addEventListener("pointermove", move);
+    cv.addEventListener("pointerdown", move);
+    cv.addEventListener("pointerleave", () => { nl.hover = null; drawNoise(); });
+  });
+  $("nlLog").onchange = (e) => { nl.id = e.target.value; nl.imgs = null; nl.hover = null; renderNoise(); };
+  document.querySelectorAll("[data-sig]").forEach((b) => b.onclick = () => {
+    nl.sig = b.dataset.sig; nl.imgs = null;
+    document.querySelectorAll("[data-sig]").forEach((x) => x.setAttribute("aria-pressed", x === b));
+    renderNoise();
+  });
+  document.querySelectorAll("[data-fmax]").forEach((b) => b.onclick = () => {
+    nl.fmax = +b.dataset.fmax; nl.imgs = null;
+    document.querySelectorAll("[data-fmax]").forEach((x) => x.setAttribute("aria-pressed", x === b));
+    drawNoise();
+  });
+  $("harmChk").onchange = (e) => { nl.harm = e.target.checked; drawNoise(); };
+
+  // ---------- tool tabs (#step-response / #noise-lab) ----------
+  function setTab(tab) {
+    state.tab = tab === "noise" ? "noise" : "step";
+    const noise = state.tab === "noise";
+    $("stepView").hidden = noise; $("noiseView").hidden = !noise;
+    $("wrap").classList.toggle("tab-noise", noise);
+    $("toolName").textContent = noise ? "Noise Lab" : "Step Response";
+    $("tagline").dataset.i18n = noise ? "taglineNoise" : "tagline";
+    $("footerTxt").dataset.i18n = noise ? "footerNoise" : "footer";
+    document.title = "GyroGhost " + (noise ? "Noise Lab" : "Step Response");
+    document.querySelectorAll(".tools a").forEach((x) => { if (x.dataset.tab === state.tab) x.setAttribute("aria-current", "page"); else x.removeAttribute("aria-current"); });
+    render();
+  }
+  const tabFromHash = () => (/noise/i.test(location.hash) ? "noise" : "step");
+  window.addEventListener("hashchange", () => setTab(tabFromHash()));
+
+  function render() {
+    applyLang(); renderRack();
+    if (state.tab === "noise") renderNoise(); else { renderTables(); drawAll(); }
+  }
   $("langBtn").onclick = () => { lang = lang === "ar" ? "en" : "ar"; try { localStorage.setItem("gg-lang", lang); } catch (e) {} render(); };
 
   // ---------- controls ----------
@@ -780,10 +1196,10 @@ self.onmessage = (e) => {
   ["dragenter", "dragover"].forEach((t) => document.addEventListener(t, (e) => { e.preventDefault(); drop.classList.add("over"); }));
   ["dragleave", "drop"].forEach((t) => document.addEventListener(t, (e) => { e.preventDefault(); if (t === "drop" || e.target === document.documentElement) drop.classList.remove("over"); }));
   document.addEventListener("drop", (e) => addFiles(e.dataTransfer && e.dataTransfer.files));
-  window.addEventListener("resize", drawAll);
+  window.addEventListener("resize", () => { if (state.tab === "noise") drawNoise(); else drawAll(); });
   try { matchMedia("(prefers-color-scheme: dark)").addEventListener("change", drawAll); } catch (e) {}
   new MutationObserver(drawAll).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
-  if (document.fonts && document.fonts.ready) document.fonts.ready.then(drawAll);
-  render();
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => (state.tab === "noise" ? drawNoise() : drawAll()));
+  setTab(tabFromHash());
 })();
 </script>

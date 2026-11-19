@@ -26,12 +26,13 @@ const out = await esbuild.build({
 });
 const parser = out.outputFiles[0].text;
 const core = fs.readFileSync(path.join(root, "src/core.js"), "utf8");
+const noise = fs.readFileSync(path.join(root, "src/noise.js"), "utf8");
 const example = fs.readFileSync(path.join(root, "src/example.json"), "utf8");
-for (const [n, s] of [["parser", parser], ["core", core], ["example", example]]) {
+for (const [n, s] of [["parser", parser], ["core", core], ["noise", noise], ["example", example]]) {
   if (/<\/script/i.test(s)) throw new Error(n + " contains </script");
 }
 let page = fs.readFileSync(path.join(root, "src/page.src.html"), "utf8");
-page = page.replace("/*PARSER*/", () => parser).replace("/*CORE*/", () => core).replace("/*EXAMPLE*/", () => example);
+page = page.replace("/*PARSER*/", () => parser).replace("/*CORE*/", () => core).replace("/*NOISE*/", () => noise).replace("/*EXAMPLE*/", () => example);
 page = "<!doctype html>\n<html>\n<head>\n<meta charset=\"utf-8\">\n<meta name=\"viewport\" content=\"width=device-width, initial-scale=1, viewport-fit=cover\">\n</head>\n<body>\n" + page + "\n</body>\n</html>\n";
 fs.writeFileSync(path.join(root, "index.html"), page);
 console.log("index.html written (" + (page.length / 1024).toFixed(0) + " KB)");

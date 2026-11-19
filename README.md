@@ -1,8 +1,12 @@
-# GyroGhost Step Response
+# GyroGhost Step Response & Noise Lab
 
-Free PID step response and log comparison for Betaflight blackbox logs. It runs fully in your browser, so your logs never leave your device.
+Two free tools for Betaflight blackbox logs, in one page. Everything runs in your browser, so your logs never leave your device.
 
-**Open the tool:** https://gyroghost.github.io/step-response/
+- **Step Response** – see how your quad reacts to stick input and whether your PIDs are tuned.
+- **Noise Lab** – see where your noise comes from and whether your filters are catching it.
+
+**Open Step Response:** https://gyroghost.github.io/step-response/
+**Open Noise Lab:** https://gyroghost.github.io/step-response/#noise-lab
 
 ## What it does
 
@@ -17,7 +21,19 @@ Free PID step response and log comparison for Betaflight blackbox logs. It runs 
 - Checks every log for logging artefacts (missing time, corrupt frames, very low logging rate) and warns you, so you don't tune off a broken log
 - English and Arabic UI
 
-## How it works
+## Noise Lab
+
+- Throttle vs frequency noise maps for Roll, Pitch and Yaw, before and after filtering, side by side on one colour scale
+- **Gyro** view: `gyroUnfilt` (before filters) vs the filtered gyro the PIDs see
+- **D-term** view: D-term input (rate of change of the filtered gyro, before the D-term filters) vs the logged D-term output. The two are lined up at 10–50 Hz, where the D filters pass almost everything, so the difference is what the filters removed
+- Motor RPM lines (1×, 2×, 3×…) from logged eRPM and the `motor_poles` header: motor Hz = eRPM × 100 / 60 / (poles / 2), same as Betaflight. Needs Bidirectional DShot
+- Finds the loudest noise peak above 80 Hz on each axis and tells you if it follows the motors (RPM filter territory) or not (frame, loose parts, props), and how much the filters take off
+- Hover a map to read frequency, throttle, level before / after and the nearest motor harmonic
+- Shows the eRPM, RPM filter and logging rate status, and warns when the logging rate is too low to see high noise
+
+Maps use a Hann-windowed FFT over about 0.25 s windows (50% overlap), averaged per 2% throttle. Windows that touch a logging gap are skipped.
+
+## How Step Response works
 
 The step response is estimated with Wiener deconvolution over 1 s windows of setpoint and gyro, the same method as [Plasmatree's PID-Analyzer](https://github.com/Plasmatree/PID-Analyzer). Windows with almost no stick input (< 20°/s) or a response that never settles near 1 are dropped. The curve is the mean of the windows that are left, and the shaded band is ±1 standard deviation, like PIDtoolbox. N is the number of windows used.
 
@@ -43,12 +59,14 @@ npm run build          # writes index.html
 
 - `src/page.src.html` – page, styles and UI
 - `src/core.js` – log loading and step response math
+- `src/noise.js` – Noise Lab maps, eRPM harmonics and findings
 - `src/example.json` – the example curves shown on first load
 
 ## Credits & license
 
 - Log decoding uses the parser from [Betaflight Blackbox Explorer](https://github.com/betaflight/blackbox-log-viewer) (GPL-3.0)
 - Step response method from [PID-Analyzer](https://github.com/Plasmatree/PID-Analyzer) by Plasmatree
+- Noise Lab idea inspired by [blackbox_analyzer](https://github.com/nerdCopter/blackbox_analyzer) by nerdCopter (written from scratch, no code shared)
 - Example logs are PID-Analyzer's public sample logs
 
 Licensed under GPL-3.0. See [LICENSE](LICENSE).
