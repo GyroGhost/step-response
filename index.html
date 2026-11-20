@@ -1172,8 +1172,9 @@ self.onmessage = (e) => {
       capGyroA: "<b>Before filters</b> · gyroUnfilt", capGyroB: "<b>After filters</b> · what the PIDs see",
       capDA: "<b>D-term input</b> · before D-term filters", capDB: "<b>D-term output</b> · axisD",
       nlNoUnf: "No gyroUnfilt in this log", nlNoD: "No D-term on this axis (D = 0)", nlNoRows: "No data",
-      nlEmptyEx: "<b>Open your own logs</b>The example only has step response curves. Open a .BBL file to see its noise maps.",
-      nlEmptyNone: "<b>No logs yet</b>Open one or more .BBL files.",
+      nlEmptyEx: "<b>Open a log</b>Open a .BBL file to see its noise maps.",
+      nlEmptyNone: "<b>Open a log</b>Open a .BBL file to see its noise maps.",
+      dropSNoise: "Open one or more logs. With several, pick which one to look at from the list.",
       nlBusy: "Building noise maps…",
       pErpm: "eRPM", pErpmYes: (m, p) => m + " motors · " + p + " poles", pErpmNo: "not in this log — turn on Bidirectional DShot to see motor lines", pErpmNoPoles: "found, but motor_poles is missing",
       pRpm: "RPM filter", pRpmOn: (h, min) => h + " harmonics · min " + min + " Hz", pRpmOff: "off",
@@ -1258,8 +1259,9 @@ self.onmessage = (e) => {
       capGyroA: "<b>قبل الفلاتر</b> · gyroUnfilt", capGyroB: "<b>بعد الفلاتر</b> · ما يصل إلى الـ PID",
       capDA: "<b>دخل الـ D-term</b> · قبل فلاتر الـ D-term", capDB: "<b>خرج الـ D-term</b> · axisD",
       nlNoUnf: "لا يوجد gyroUnfilt في هذا السجل", nlNoD: "لا يوجد D-term على هذا المحور (D = 0)", nlNoRows: "لا توجد بيانات",
-      nlEmptyEx: "<b>افتح سجلاتك</b>المثال يحتوي على منحنيات الـ Step Response فقط. افتح ملف BBL لترى خرائط الضوضاء.",
-      nlEmptyNone: "<b>لا توجد سجلات</b>افتح ملف BBL أو أكثر.",
+      nlEmptyEx: "<b>افتح سجلاً</b>افتح ملف BBL لترى خرائط الضوضاء.",
+      nlEmptyNone: "<b>افتح سجلاً</b>افتح ملف BBL لترى خرائط الضوضاء.",
+      dropSNoise: "افتح سجلاً أو أكثر. عند فتح أكثر من سجل، اختر السجل الذي تريده من القائمة.",
       nlBusy: "جارٍ تجهيز خرائط الضوضاء…",
       pErpm: "eRPM", pErpmYes: (m, p) => "‎" + m + " motors · " + p + " poles", pErpmNo: "غير موجود في السجل، فعّل Bidirectional DShot لتظهر خطوط المحركات", pErpmNoPoles: "موجود، لكن قيمة motor_poles غير موجودة",
       pRpm: "RPM filter", pRpmOn: (h, min) => "‎" + h + " harmonics · min " + min + " Hz", pRpmOff: "مطفأ",
@@ -1376,8 +1378,11 @@ self.onmessage = (e) => {
     $("clearBtn").hidden = state.example || !state.logs.length;
     const box = $("logs");
     box.innerHTML = "";
-    if (!state.logs.length) { box.innerHTML = '<div class="status">' + t("noLogs") + "</div>"; return; }
-    state.logs.forEach((l) => {
+    // Noise Lab only works on real logs: the example (step curves only) stays out of its list
+    const shown = state.tab === "noise" ? state.logs.filter((l) => !l.example) : state.logs;
+    $("exampleBanner").hidden = state.tab === "noise" || !state.example;
+    if (!shown.length) { box.innerHTML = '<div class="status">' + t("noLogs") + "</div>"; return; }
+    shown.forEach((l) => {
       const el = document.createElement("div");
       el.className = "log" + (l.visible ? "" : " off");
       const h = l.header;
@@ -1817,6 +1822,7 @@ self.onmessage = (e) => {
     if (!logs.some((l) => l.id === nl.id)) { nl.id = logs.length ? logs[logs.length - 1].id : null; nl.imgs = null; nl.hover = null; }
     sel.innerHTML = logs.map((l) => '<option value="' + esc(l.id) + '"' + (l.id === nl.id ? " selected" : "") + ">" + esc(short(l)) + "</option>").join("");
     sel.disabled = !logs.length;
+    sel.closest("label").style.display = logs.length < 2 ? "none" : "";
     const empty = $("nlEmpty"), body = $("nlBody"), info = $("nlInfo");
     if (!logs.length) {
       empty.innerHTML = t(state.logs.length ? "nlEmptyEx" : "nlEmptyNone"); empty.hidden = false; body.hidden = true; info.innerHTML = ""; return;
@@ -1902,6 +1908,7 @@ self.onmessage = (e) => {
     $("toolName").textContent = noise ? "Noise Lab" : "Step Response";
     $("tagline").dataset.i18n = noise ? "taglineNoise" : "tagline";
     $("footerTxt").dataset.i18n = noise ? "footerNoise" : "footer";
+    document.querySelector("#drop small").dataset.i18n = noise ? "dropSNoise" : "dropS";
     document.title = "GyroGhost " + (noise ? "Noise Lab" : "Step Response");
     document.querySelectorAll(".tools a").forEach((x) => { if (x.dataset.tab === state.tab) x.setAttribute("aria-current", "page"); else x.removeAttribute("aria-current"); });
     render();
