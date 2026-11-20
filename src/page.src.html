@@ -8,6 +8,7 @@
   --bg: #0d1014; --panel: #151a20; --panel-2: #1b2129; --line: #2a323c; --grid: #222a33;
   --fg: #e6eaef; --muted: #8b96a3; --accent: #e5383b; --accent-soft: rgba(229,56,59,.14);
   --good: #3fb68b; --warn: #e3a33b; --bad: #e5383b;
+  --step: #e5383b; --noise: #9b7bff; --noise-soft: rgba(155,123,255,.16); --harm: #ff4d5a;
   --f-display: "Chakra Petch", "IBM Plex Sans Arabic", "Segoe UI", system-ui, sans-serif;
   --f-body: "IBM Plex Sans", "IBM Plex Sans Arabic", "Segoe UI", system-ui, sans-serif;
   --f-mono: "JetBrains Mono", ui-monospace, Consolas, monospace;
@@ -16,11 +17,15 @@
 @media (prefers-color-scheme: light) { :root:not([data-theme="dark"]) {
   --bg: #f3f5f7; --panel: #ffffff; --panel-2: #eef1f4; --line: #d6dce3; --grid: #e7ebef;
   --fg: #141a21; --muted: #5d6874; --accent: #c8262a; --accent-soft: rgba(200,38,42,.09);
-  --good: #1f8a63; --warn: #a96d0c; --bad: #c8262a; color-scheme: light; } }
+  --good: #1f8a63; --warn: #a96d0c; --bad: #c8262a; color-scheme: light;
+  --step: #c8262a; --noise: #6a46d6; --noise-soft: rgba(106,70,214,.10); --harm: #e0202f; } }
 :root[data-theme="light"] {
   --bg: #f3f5f7; --panel: #ffffff; --panel-2: #eef1f4; --line: #d6dce3; --grid: #e7ebef;
   --fg: #141a21; --muted: #5d6874; --accent: #c8262a; --accent-soft: rgba(200,38,42,.09);
-  --good: #1f8a63; --warn: #a96d0c; --bad: #c8262a; color-scheme: light; }
+  --good: #1f8a63; --warn: #a96d0c; --bad: #c8262a; color-scheme: light;
+  --step: #c8262a; --noise: #6a46d6; --noise-soft: rgba(106,70,214,.10); --harm: #e0202f; }
+/* each tool has its own colour: Step Response red, Noise Lab purple */
+.wrap.tab-noise { --accent: var(--noise); --accent-soft: var(--noise-soft); }
 
 * { box-sizing: border-box; }
 body { background: var(--bg); color: var(--fg); font: 14px/1.5 var(--f-body); }
@@ -153,8 +158,10 @@ footer a { color: var(--fg); }
 .tools a b { display: block; font: 700 15px var(--f-display); letter-spacing: .06em; text-transform: uppercase; color: var(--fg); }
 .tools a small { display: block; font-size: 12.5px; line-height: 1.4; margin-top: 2px; }
 .tools a:hover { border-color: var(--muted); }
-.tools a[aria-current="page"] { border-color: var(--accent); box-shadow: inset 0 -3px 0 var(--accent); }
-.tools a[aria-current="page"] b { color: var(--accent); }
+.tools a[data-tab="step"] { --tc: var(--step); } .tools a[data-tab="noise"] { --tc: var(--noise); }
+.tools a b::before { content: ""; display: inline-block; width: 9px; height: 9px; border-radius: 2px; background: var(--tc); margin-right: 8px; vertical-align: 1px; }
+.tools a[aria-current="page"] { border-color: var(--tc); box-shadow: inset 0 -3px 0 var(--tc); }
+.tools a[aria-current="page"] b { color: var(--tc); }
 .tools a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 @media (max-width: 600px) { .tools { grid-template-columns: minmax(0,1fr); } }
 
@@ -183,7 +190,7 @@ footer a { color: var(--fg); }
 .nl-legend { display: flex; flex-wrap: wrap; gap: 8px 20px; align-items: center; margin-top: 12px; font-size: 12.5px; color: var(--muted); }
 .nl-legend .bar { width: 160px; height: 10px; border-radius: 3px; border: 1px solid var(--line); direction: ltr; }
 .nl-legend .ends { display: inline-flex; gap: 8px; align-items: center; }
-.nl-legend .line { display: inline-block; width: 22px; height: 0; border-top: 2.5px solid var(--accent); vertical-align: middle; margin-inline-end: 6px; }
+.nl-legend .line { display: inline-block; width: 22px; height: 0; border-top: 2.5px solid var(--harm); vertical-align: middle; margin-inline-end: 6px; }
 .nl-empty { background: var(--panel); border: 1px dashed var(--line); border-radius: 10px; padding: 26px 18px; text-align: center; color: var(--muted); margin-top: 12px; }
 .nl-empty b { display: block; color: var(--fg); font: 600 15px var(--f-display); margin-bottom: 4px; }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
@@ -1003,7 +1010,7 @@ self.onmessage = (e) => {
         for (let h = 1; h <= H2; h++) {
           const pts = [];
           for (let b = 0; b < TB; b++) pts.push(isFinite(r.motorHz[b]) ? [X(r.motorHz[b] * h), Y(((b + 0.5) / TB) * 100)] : null);
-          [["rgba(0,0,0,.55)", 4.5], [css("--accent"), 2]].forEach(([col, lw]) => {
+          [["rgba(0,0,0,.55)", 4.5], [css("--harm"), 2]].forEach(([col, lw]) => {
             ctx.strokeStyle = col; ctx.lineWidth = lw; ctx.lineJoin = "round"; ctx.beginPath();
             let pen = false;
             pts.forEach((p) => { if (!p) { pen = false; return; } pen ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1]); pen = true; });
@@ -1059,7 +1066,7 @@ self.onmessage = (e) => {
     const it = (k, v) => "<span><b>" + k + "</b>" + v + "</span>";
     box.innerHTML = '<div class="r">' + it(t("roFreq"), Math.round(nl.hover.hz) + " Hz") + it(t("roThr"), Math.round(nl.hover.thr) + "%") +
       it(t("roBefore"), c.A == null ? "–" : c.A.toFixed(1) + " dB") + it(t("roAfter"), c.B == null ? "–" : c.B.toFixed(1) + " dB") +
-      (c.A != null && c.B != null ? it(t("roCut"), (c.A - c.B).toFixed(1) + " dB") : "") + (c.harm ? '<span style="color:var(--accent)">' + t("roHarm", c.harm) + "</span>" : "") + "</div>";
+      (c.A != null && c.B != null ? it(t("roCut"), (c.A - c.B).toFixed(1) + " dB") : "") + (c.harm ? '<span style="color:var(--harm)">' + t("roHarm", c.harm) + "</span>" : "") + "</div>";
     box.hidden = false;
   }
   function drawNoise() {
